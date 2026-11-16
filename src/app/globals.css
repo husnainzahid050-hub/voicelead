@@ -84,6 +84,20 @@
     line-height: 2.2;
   }
 
+  /* Browsers give fieldsets min-width: min-content, which makes them overflow
+     narrow cards on phones. */
+  fieldset {
+    min-width: 0;
+  }
+
+  /* On phones the browser opens a native picker on tap; the inline clock
+     icon only steals width and clips "10:00 am". */
+  @media (max-width: 639px) {
+    input[type="time"]::-webkit-calendar-picker-indicator {
+      display: none;
+    }
+  }
+
   /* One consistent, highly visible keyboard focus indicator everywhere. */
   :focus-visible {
     outline: 3px solid var(--color-ring);

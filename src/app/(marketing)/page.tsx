@@ -1,4 +1,7 @@
 import { ClipboardCheck, Mic, ShieldCheck, Sparkles } from "lucide-react";
+import Link from "next/link";
+import { Brand } from "@/components/brand";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { UrgencyBadge } from "@/components/ui/badge";
 
@@ -26,16 +29,16 @@ export default function HomePage() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="border-border border-b">
-        <div className="mx-auto flex h-16 max-w-5xl items-center px-4 sm:px-6">
-          <span className="flex items-center gap-2 text-lg font-bold tracking-tight">
-            <span
-              aria-hidden="true"
-              className="bg-primary text-primary-foreground grid size-8 place-items-center rounded-md"
-            >
-              <Mic className="size-4" />
-            </span>
-            VoiceLead
-          </span>
+        <div className="mx-auto flex h-16 max-w-5xl items-center justify-between gap-2 px-4 sm:px-6">
+          <Brand />
+          <nav aria-label="Account" className="flex items-center gap-1 sm:gap-2">
+            <Button asChild variant="ghost">
+              <Link href="/sign-in">Sign in</Link>
+            </Button>
+            <Button asChild>
+              <Link href="/sign-up">Get started</Link>
+            </Button>
+          </nav>
         </div>
       </header>
 

@@ -1,0 +1,35 @@
+/**
+ * Common passwords that satisfy the 12-character minimum. Small on purpose:
+ * the length rule already removes most of the top breached-password lists.
+ */
+export const COMMON_PASSWORDS: ReadonlySet<string> = new Set([
+  "123456789012",
+  "1234567890123",
+  "12345678901234",
+  "123456789123",
+  "111111111111",
+  "000000000000",
+  "password1234",
+  "password12345",
+  "password123456",
+  "passwordpassword",
+  "qwertyuiop12",
+  "qwertyuiop123",
+  "qwerty123456",
+  "1q2w3e4r5t6y",
+  "abc123456789",
+  "iloveyou1234",
+  "welcome12345",
+  "admin1234567",
+  "letmein12345",
+  "pakistan1234",
+  "pakistan12345",
+  "pakistan123456",
+  "pakistanzindabad",
+  "muzaffarabad",
+  "muzaffarabad123",
+  "dentist12345",
+  "smilecare123",
+  "voicelead123",
+  "voicelead1234",
+]);

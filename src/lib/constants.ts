@@ -90,5 +90,43 @@ export const LIMITS = {
   maxFollowUpChars: 500,
   maxInternalNotesChars: 2000,
   deletionWindowHours: 24,
+  /** Sliding idle lifetime: a session unused for this long expires. */
   sessionDays: 7,
+  /** Absolute lifetime: re-login required after this, however active. */
+  sessionAbsoluteDays: 30,
+  passwordMinChars: 12,
+  passwordMaxChars: 128,
 } as const;
+
+/** Auth abuse limits (per window). Keys are HMAC-hashed, never raw emails/IPs. */
+export const AUTH_RATE_LIMITS = {
+  signInPerEmail: { limit: 5, windowMs: 15 * 60_000 },
+  signInPerIp: { limit: 20, windowMs: 15 * 60_000 },
+  signUpPerIp: { limit: 5, windowMs: 60 * 60_000 },
+} as const;
+
+/** Pre-ticked during onboarding so most dental clinics can just press Next. */
+export const DENTAL_DEFAULT_SERVICES = [
+  "Dental checkup",
+  "Cleaning",
+  "Filling",
+  "Root canal",
+  "Braces consultation",
+  "Emergency dental pain",
+] as const;
+
+export const FOLLOW_UP_TONE_LABELS: Record<(typeof FOLLOW_UP_TONES)[number], string> = {
+  friendly: "Friendly and warm",
+  formal: "Formal and professional",
+  concise: "Short and to the point",
+};
+
+export const WEEKDAY_LABELS: Record<(typeof WEEKDAYS)[number], string> = {
+  mon: "Monday",
+  tue: "Tuesday",
+  wed: "Wednesday",
+  thu: "Thursday",
+  fri: "Friday",
+  sat: "Saturday",
+  sun: "Sunday",
+};
