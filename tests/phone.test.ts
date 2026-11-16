@@ -57,3 +57,11 @@ describe("formatting helpers", () => {
     expect(toWhatsAppDigits("+923001234567")).toBe("923001234567");
   });
 });
+
+describe("landline display", () => {
+  it("groups by area code", () => {
+    expect(formatPkPhone("+925822000100")).toBe("05822 000100"); // Muzaffarabad
+    expect(formatPkPhone("+922134567890")).toBe("021 34567890"); // Karachi
+    expect(formatPkPhone("+92992123456")).toBe("0992 123456"); // Abbottabad
+  });
+});

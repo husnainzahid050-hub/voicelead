@@ -18,8 +18,16 @@ const MOBILE_NSN = /^3\d{9}$/;
 /** Landline national numbers: area code (not starting with 0, 1 or 3) + subscriber, 9-10 digits. */
 const LANDLINE_NSN = /^[2456789]\d{8,9}$/;
 
-export function normalizePkPhone(input: string): NormalizedPhone | null {
-  if (typeof input !== "string" || input.length > 32) return null;
+/** Map Urdu (۰-۹) and Arabic-Indic (٠-٩) digits to ASCII so "۰۳۰۰…" is understood. */
+export function toAsciiDigits(input: string): string {
+  return input
+    .replace(/[۰-۹]/g, (d) => String(d.charCodeAt(0) - 0x06f0))
+    .replace(/[٠-٩]/g, (d) => String(d.charCodeAt(0) - 0x0660));
+}
+
+export function normalizePkPhone(rawInput: string): NormalizedPhone | null {
+  if (typeof rawInput !== "string" || rawInput.length > 32) return null;
+  const input = toAsciiDigits(rawInput);
 
   // Allow only digits, spaces, dashes, dots, parentheses and one leading plus.
   if (!/^\+?[\d\s\-.()]+$/.test(input.trim())) return null;
@@ -47,8 +55,21 @@ export function maskPhone(e164: string | null | undefined): string {
 export function formatPkPhone(e164: string): string {
   const nsn = e164.replace(/^\+92/, "");
   if (MOBILE_NSN.test(nsn)) return `0${nsn.slice(0, 3)} ${nsn.slice(3)}`;
-  // Landline area codes vary in length; keep it simple and readable.
-  return `0${nsn}`;
+  return `0${landlineAreaCode(nsn)} ${nsn.slice(landlineAreaCode(nsn).length)}`;
+}
+
+/** Two-digit codes of the large cities (Karachi 21, Lahore 42, Islamabad 51, …). */
+const TWO_DIGIT_AREA_CODES = new Set(["21", "22", "41", "42", "51", "52", "61", "71", "81", "91"]);
+
+/**
+ * Best-effort area code for display only. Azad Kashmir and Gilgit-Baltistan
+ * use 4-digit codes starting with 58 (Muzaffarabad 5822); most other
+ * districts use 3 digits.
+ */
+function landlineAreaCode(nsn: string): string {
+  if (TWO_DIGIT_AREA_CODES.has(nsn.slice(0, 2))) return nsn.slice(0, 2);
+  if (nsn.startsWith("58")) return nsn.slice(0, 4);
+  return nsn.slice(0, 3);
 }
 
 /** Digits-only form used by wa.me deep links: "923001234567". */

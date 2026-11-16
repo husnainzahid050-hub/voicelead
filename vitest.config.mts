@@ -10,6 +10,7 @@ const TEST_ENV = {
   IP_HASH_SECRET: "test-ip-hash-secret-0123456789abcdef",
   DEMO_OWNER_PASSWORD: "Test-Demo-Password-2026",
   SHOW_DEMO_LOGIN: "false",
+  AI_PROVIDER: "mock",
 } as const;
 
 // Applied to this process too, so globalSetup (which builds the test DB) sees it.

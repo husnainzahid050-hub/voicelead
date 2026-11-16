@@ -14,6 +14,8 @@ export const serverEnvSchema = z.object({
   // Required from Phase 3 onward; optional so the foundation runs without a key.
   GEMINI_API_KEY: z.string().min(1).optional(),
   GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
+  // "mock" = deterministic rule-based stand-in for automated tests only.
+  AI_PROVIDER: z.enum(["gemini", "mock"]).default("gemini"),
   // When "true", the sign-in page shows the seeded demo accounts and password.
   SHOW_DEMO_LOGIN: z
     .enum(["true", "false"])
@@ -30,6 +32,7 @@ export function parseServerEnv(source: NodeJS.ProcessEnv): ServerEnv {
     // Treat empty strings from .env as "unset".
     GEMINI_API_KEY: source.GEMINI_API_KEY || undefined,
     GEMINI_MODEL: source.GEMINI_MODEL || undefined,
+    AI_PROVIDER: source.AI_PROVIDER || undefined,
     SHOW_DEMO_LOGIN: source.SHOW_DEMO_LOGIN || undefined,
     DEMO_OWNER_PASSWORD: source.DEMO_OWNER_PASSWORD || undefined,
   });

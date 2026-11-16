@@ -48,8 +48,14 @@ describe("tenant isolation", () => {
   });
 
   it("lead counts are scoped to the caller's clinic", async () => {
-    expect((await getDashboardSummary(smileOwner)).leadCount).toBe(13);
-    expect((await getDashboardSummary(brightOwner)).leadCount).toBe(2);
+    // Other test files add leads, so compare against each clinic's own rows.
+    const own = (businessId: string) => db.lead.count({ where: { businessId, deletedAt: null } });
+    const smile = (await getDashboardSummary(smileOwner)).leadCount;
+    const bright = (await getDashboardSummary(brightOwner)).leadCount;
+    expect(smile).toBe(await own(smileOwner.businessId));
+    expect(bright).toBe(await own(brightOwner.businessId));
+    expect(smile).toBeGreaterThanOrEqual(13);
+    expect(smile + bright).toBe(await db.lead.count({ where: { deletedAt: null } }));
   });
 
   it("an update by one owner never touches another clinic", async () => {

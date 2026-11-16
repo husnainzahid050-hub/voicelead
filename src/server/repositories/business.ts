@@ -103,3 +103,33 @@ export function updateBusinessForContext(
 export function countLeadsForContext(ctx: AuthContext) {
   return db.lead.count({ where: { businessId: ctx.businessId, deletedAt: null } });
 }
+
+/**
+ * Public, unauthenticated lookup for the intake page. Selects only fields that
+ * are safe to show any visitor (no ids of users, no internal settings).
+ */
+export function findPublicBusinessBySlug(slug: string) {
+  return db.business.findUnique({
+    where: { slug },
+    select: {
+      id: true,
+      name: true,
+      slug: true,
+      description: true,
+      phone: true,
+      address: true,
+      services: true,
+      workingHours: true,
+      intakeInstructions: true,
+      isActive: true,
+    },
+  });
+}
+
+/** Lookup by id for the intake API, after the signed intake token has been verified. */
+export function findBusinessForIntake(id: string) {
+  return db.business.findUnique({
+    where: { id },
+    select: { id: true, name: true, slug: true, phone: true, services: true, isActive: true },
+  });
+}

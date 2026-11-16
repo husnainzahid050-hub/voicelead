@@ -12,7 +12,7 @@ MVP niche: dental clinics. Patients describe their need by voice in Urdu or Engl
 | ----- | ------------------------------------------------------------ | ------- |
 | 1     | Foundation: Next.js, Prisma schema, seed data, design tokens | ✅ Done |
 | 2     | Authentication, onboarding, settings, roles                  | ✅ Done |
-| 3     | Customer voice intake + Gemini extraction                    | ⏳      |
+| 3     | Customer voice intake + Gemini extraction                    | ✅ Done |
 | 4     | Business dashboard, lead workflow, follow-up messages        | ⏳      |
 | 5     | Rate limiting, authorization hardening, privacy flows, tests | ⏳      |
 | 6     | Polish, accessibility, docs, Vercel deployment               | ⏳      |

@@ -105,6 +105,17 @@ export const AUTH_RATE_LIMITS = {
   signUpPerIp: { limit: 5, windowMs: 60 * 60_000 },
 } as const;
 
+/** Public intake endpoints (anonymous): per hashed IP, plus a per-clinic daily cap. */
+export const INTAKE_RATE_LIMITS = {
+  transcribePerIp: { limit: 15, windowMs: 10 * 60_000 },
+  analyzePerIp: { limit: 40, windowMs: 10 * 60_000 },
+  submitPerIp: { limit: 5, windowMs: 60 * 60_000 },
+  submitPerBusinessPerDay: 300,
+} as const;
+
+/** How long an intake page stays valid before it must be reloaded. */
+export const INTAKE_TOKEN_TTL_SECONDS = 60 * 60;
+
 /** Pre-ticked during onboarding so most dental clinics can just press Next. */
 export const DENTAL_DEFAULT_SERVICES = [
   "Dental checkup",
