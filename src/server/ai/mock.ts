@@ -2,6 +2,7 @@ import "server-only";
 import { addDaysIso } from "@/lib/dates";
 import { detectLanguage } from "@/lib/intake/language";
 import { templateQuestion } from "@/lib/intake/questions";
+import { buildFollowUpTemplate, type FollowUpInput } from "@/lib/leads/follow-up";
 import { SKIPPED_ANSWER, type ConversationTurnInput } from "@/lib/intake/types";
 import { toAsciiDigits } from "@/lib/phone";
 import type { Urgency } from "@/types/domain";
@@ -142,5 +143,9 @@ export class MockLeadAI implements LeadAI {
 
   async clarifyingQuestion(input: QuestionInput): Promise<string> {
     return templateQuestion(input.field, input.language);
+  }
+
+  async followUpMessage(input: FollowUpInput): Promise<string> {
+    return buildFollowUpTemplate(input);
   }
 }

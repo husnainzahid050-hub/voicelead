@@ -31,6 +31,12 @@ export async function isRateLimited(key: string, rule: RateLimitRule): Promise<R
 /** Count one event against `key`. Returns whether the key is now over its limit. */
 export async function recordHit(key: string, rule: RateLimitRule): Promise<RateLimitResult> {
   const now = new Date();
+  // Housekeeping on ~2% of writes: remove windows that ended over a day ago.
+  if (Math.random() < 0.02) {
+    await db.rateLimit
+      .deleteMany({ where: { windowEnd: { lt: new Date(now.getTime() - 86_400_000) } } })
+      .catch(() => undefined);
+  }
   const row = await db.$transaction(async (tx) => {
     const existing = await tx.rateLimit.findUnique({ where: { key } });
     if (!existing || existing.windowEnd <= now) {

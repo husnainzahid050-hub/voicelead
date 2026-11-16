@@ -31,6 +31,8 @@ async function readToken(): Promise<string | undefined> {
 export async function createSession(userId: string): Promise<void> {
   const token = generateSessionToken();
   const now = new Date();
+  // Housekeeping: drop this user's expired sessions so the table doesn't grow forever.
+  await db.session.deleteMany({ where: { userId, expiresAt: { lte: now } } });
   await db.session.create({
     data: {
       id: hashSessionToken(token, env.SESSION_SECRET),

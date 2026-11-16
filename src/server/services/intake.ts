@@ -1,5 +1,5 @@
 import "server-only";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { z } from "zod";
 import { INTAKE_TOKEN_TTL_SECONDS, LANGUAGES, LIMITS, URGENCIES } from "@/lib/constants";
 import { addDaysIso, isIsoDateWithin, isoDateInTimezone, weekdayInTimezone } from "@/lib/dates";
@@ -25,7 +25,12 @@ import {
 import { hasRedFlag, sanitizeExtraction } from "@/server/ai/guards";
 import { AiUnavailableError, getLeadAI, type LeadAI } from "@/server/ai/provider";
 import { findBusinessForIntake, findPublicBusinessBySlug } from "@/server/repositories/business";
-import { createLead } from "@/server/repositories/lead";
+import {
+  createLead,
+  eraseLeadScoped,
+  findLeadForCustomerDeletion,
+} from "@/server/repositories/lead";
+import { writeAudit } from "@/server/repositories/audit";
 import { signToken, verifyToken } from "@/server/signing";
 import type { FieldSource, LeadFieldName, LeadStatus } from "@/types/domain";
 
@@ -60,10 +65,9 @@ export async function getPublicBusiness(
       intakeInstructions: b.intakeInstructions,
       isActive: b.isActive,
     },
-    // Only an active clinic's page can make intake requests.
-    intakeToken: b.isActive
-      ? signToken("intake", { b: b.id, s: b.slug }, INTAKE_TOKEN_TTL_SECONDS)
-      : null,
+    // Issued for paused clinics too, so a patient can still delete their own request;
+    // the intake endpoints themselves refuse paused clinics (resolveIntakeBusiness).
+    intakeToken: signToken("intake", { b: b.id, s: b.slug }, INTAKE_TOKEN_TTL_SECONDS),
   };
 }
 
@@ -87,6 +91,7 @@ export type ResolveResult =
 export async function resolveIntakeBusiness(
   token: string | null,
   slug: string,
+  options: { allowInactive?: boolean } = {},
 ): Promise<ResolveResult> {
   const verified = verifyToken("intake", token, intakeTokenSchema);
   if (!verified.ok)
@@ -95,7 +100,7 @@ export async function resolveIntakeBusiness(
 
   const b = await findBusinessForIntake(verified.data.b);
   if (!b) return { ok: false, code: "not_found" };
-  if (!b.isActive) return { ok: false, code: "inactive" };
+  if (!b.isActive && !options.allowInactive) return { ok: false, code: "inactive" };
   return {
     ok: true,
     business: {
@@ -361,8 +366,51 @@ export async function submitIntake(
       ...body.turns.map((t) => ({ role: t.role, content: t.content })),
     ],
     ipHash,
-    auditMetadata: { source: "intake", mode: ai ? "ai" : "manual", flags: flags.length },
+    auditMetadata: { source: "intake", mode: ai ? "ai" : "manual", flags },
   });
 
   return { referenceNumber: created.referenceNumber, deletionToken, urgency };
+}
+
+// ── Customer deletion request (within 24 hours) ───────────────────────
+
+/**
+ * Erase a submitted request on the customer's behalf. Requires the reference
+ * number AND the secret shown once on the success screen; the window is 24h.
+ * Every failure looks the same to the caller, so the endpoint cannot be used
+ * to discover which reference numbers exist.
+ */
+export async function deleteRequestByCustomer(
+  business: IntakeBusiness,
+  referenceNumber: string,
+  deletionToken: string,
+  ipHash: string,
+  now = new Date(),
+): Promise<boolean> {
+  const lead = await findLeadForCustomerDeletion(business.id, referenceNumber);
+  if (!lead?.deletionTokenHash || !lead.deletionExpiresAt || lead.deletionExpiresAt <= now)
+    return false;
+
+  const given = createHash("sha256").update(deletionToken).digest();
+  const stored = Buffer.from(lead.deletionTokenHash, "hex");
+  if (given.length !== stored.length || !timingSafeEqual(given, stored)) return false;
+
+  if (!(await eraseLeadScoped({ businessId: business.id }, lead.id))) return false;
+  await writeAudit({
+    businessId: business.id,
+    leadId: lead.id,
+    userId: null,
+    action: "lead.deletion_requested",
+    ipHash,
+    metadata: { referenceNumber, by: "customer" },
+  });
+  await writeAudit({
+    businessId: business.id,
+    leadId: lead.id,
+    userId: null,
+    action: "lead.deleted",
+    ipHash,
+    metadata: { referenceNumber, by: "customer" },
+  });
+  return true;
 }

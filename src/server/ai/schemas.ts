@@ -46,3 +46,7 @@ export type AiExtraction = z.infer<typeof aiExtractionSchema>;
 export const aiQuestionSchema = z.object({
   question: z.string().describe("One short question, under 25 words, in the customer's language"),
 });
+
+export const aiFollowUpSchema = z.object({
+  message: z.string().describe("The WhatsApp message text only"),
+});

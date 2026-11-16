@@ -270,7 +270,11 @@ describe("tampering and abuse", () => {
           code: "inactive",
         },
       );
-      expect((await getPublicBusiness("bright-smile-dental"))?.intakeToken).toBeNull();
+      // ...but a patient can still reach the deletion endpoint for their own request.
+      const paused = await resolveIntakeBusiness(page?.intakeToken ?? null, "bright-smile-dental", {
+        allowInactive: true,
+      });
+      expect(paused.ok).toBe(true);
     } finally {
       await db.business.update({
         where: { slug: "bright-smile-dental" },

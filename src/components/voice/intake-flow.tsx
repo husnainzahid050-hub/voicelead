@@ -28,6 +28,7 @@ import { IntakeAlert } from "./intake-alert";
 import { RecordButton } from "./record-button";
 import { ReviewForm, initialReviewValues, type ReviewValues } from "./review-form";
 import { SpeakButton } from "./speak-button";
+import { DeleteRequest } from "./delete-request";
 import { SuccessPanel } from "./success-panel";
 import { useRecorder, type RecorderError } from "./use-recorder";
 
@@ -41,7 +42,8 @@ type Step =
   | "review"
   | "manual"
   | "submitting"
-  | "done";
+  | "done"
+  | "deleted";
 
 const RECORDER_MESSAGES: Record<RecorderError, string> = {
   denied:
@@ -457,7 +459,32 @@ export function IntakeFlow({
               clinicName={business.name}
               clinicPhone={business.phone}
               customerPhone={submittedPhone}
-            />
+            >
+              <DeleteRequest
+                api={api}
+                slug={business.slug}
+                referenceNumber={result.referenceNumber}
+                deletionToken={result.deletionToken}
+                onDeleted={() => setStep("deleted")}
+              />
+            </SuccessPanel>
+          </section>
+        )}
+
+        {step === "deleted" && (
+          <section aria-labelledby="deleted-heading" className="space-y-3 py-6 text-center">
+            <h2
+              id="deleted-heading"
+              ref={headingRef}
+              tabIndex={-1}
+              className="text-xl font-semibold outline-none"
+            >
+              Your request was deleted
+            </h2>
+            <p className="text-muted-foreground">
+              Your details have been removed from {business.name}&rsquo;s list. You can send a new
+              request any time.
+            </p>
           </section>
         )}
       </CardContent>

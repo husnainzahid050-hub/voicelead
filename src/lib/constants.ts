@@ -111,6 +111,13 @@ export const INTAKE_RATE_LIMITS = {
   analyzePerIp: { limit: 40, windowMs: 10 * 60_000 },
   submitPerIp: { limit: 5, windowMs: 60 * 60_000 },
   submitPerBusinessPerDay: 300,
+  deletePerIp: { limit: 10, windowMs: 60 * 60_000 },
+} as const;
+
+/** Signed-in dashboard actions, per user. */
+export const DASHBOARD_RATE_LIMITS = {
+  mutationsPerUser: { limit: 120, windowMs: 10 * 60_000 },
+  followUpAiPerUser: { limit: 30, windowMs: 10 * 60_000 },
 } as const;
 
 /** How long an intake page stays valid before it must be reloaded. */

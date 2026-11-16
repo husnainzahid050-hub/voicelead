@@ -1,12 +1,13 @@
 "use client";
 
-import { LayoutDashboard, QrCode, Settings, type LucideIcon } from "lucide-react";
+import { Inbox, LayoutDashboard, QrCode, Settings, type LucideIcon } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
 const ITEMS: Array<{ href: string; label: string; icon: LucideIcon; ownerOnly?: boolean }> = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/dashboard/leads", label: "Leads", icon: Inbox },
   { href: "/dashboard/intake-link", label: "Intake link", icon: QrCode },
   { href: "/dashboard/settings", label: "Settings", icon: Settings, ownerOnly: true },
 ];

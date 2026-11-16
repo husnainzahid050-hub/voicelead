@@ -1,6 +1,7 @@
 import "server-only";
 import { env } from "@/lib/env";
 import type { AskableField, ConversationTurnInput } from "@/lib/intake/types";
+import type { FollowUpInput } from "@/lib/leads/follow-up";
 import type { Language } from "@/types/domain";
 import type { AiExtraction, AiTranscription } from "./schemas";
 
@@ -13,6 +14,8 @@ export interface LeadAI {
   transcribe(audio: Uint8Array, mediaType: string): Promise<AiTranscription>;
   extract(input: ExtractionInput): Promise<AiExtraction>;
   clarifyingQuestion(input: QuestionInput): Promise<string>;
+  /** WhatsApp-style follow-up. Output is checked by followUpProblem() before use. */
+  followUpMessage(input: FollowUpInput): Promise<string>;
 }
 
 export interface ExtractionInput {

@@ -63,6 +63,16 @@ export const submitBodySchema = z.object({
 export type AnalyzeBody = z.infer<typeof analyzeBodySchema>;
 export type SubmitBody = z.infer<typeof submitBodySchema>;
 
+/** POST /api/intake/[slug]/delete — the customer's own deletion request. */
+export const deleteRequestBodySchema = z.object({
+  referenceNumber: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^VL-[23456789A-HJ-KM-NP-Z]{6}$/),
+  deletionToken: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
+});
+
 /** Accepted recording formats (Chrome/Edge: webm, Firefox: ogg, Safari: mp4). */
 export const AUDIO_MEDIA_TYPES = [
   "audio/webm",

@@ -72,6 +72,13 @@ export function createIntakeApi(slug: string, token: string) {
         body: JSON.stringify(body),
       });
     },
+    deleteRequest(referenceNumber: string, deletionToken: string) {
+      return call<{ deleted: true }>(`${base}/delete`, token, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ referenceNumber, deletionToken }),
+      });
+    },
   };
 }
 

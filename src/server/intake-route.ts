@@ -18,6 +18,7 @@ export async function openIntakeRequest(
   slug: string,
   limitName: string,
   rule: RateLimitRule,
+  options: { allowInactive?: boolean } = {},
 ): Promise<
   { ok: true; ctx: IntakeContext } | { ok: false; response: NextResponse<IntakeErrorBody> }
 > {
@@ -32,7 +33,11 @@ export async function openIntakeRequest(
     };
   }
 
-  const resolved = await resolveIntakeBusiness(request.headers.get("x-intake-token"), slug);
+  const resolved = await resolveIntakeBusiness(
+    request.headers.get("x-intake-token"),
+    slug,
+    options,
+  );
   if (!resolved.ok) return { ok: false, response: errorResponse(resolved.code) };
 
   return { ok: true, ctx: { business: resolved.business, ipHash } };

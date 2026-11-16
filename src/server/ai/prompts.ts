@@ -1,5 +1,10 @@
 import type { Language } from "@/types/domain";
 import type { AskableField, ConversationTurnInput } from "@/lib/intake/types";
+import {
+  formatDateForMessage,
+  formatTimeForMessage,
+  type FollowUpInput,
+} from "@/lib/leads/follow-up";
 
 /**
  * Prompts. Customer content is always wrapped in tags and described as data:
@@ -77,4 +82,32 @@ export function questionPrompt(
 Ask the patient for ${FIELD_DESCRIPTIONS[field]}.
 One question only, under 25 words, warm and professional. ${LANGUAGE_INSTRUCTIONS[language]}
 No greeting, no medical advice, no promises about appointments.`;
+}
+
+const TONES: Record<FollowUpInput["tone"], string> = {
+  friendly: "warm and friendly",
+  formal: "polite and formal",
+  concise: "short and to the point (two sentences)",
+};
+
+/** Follow-up message the clinic sends manually on WhatsApp. */
+export function followUpPrompt(input: FollowUpInput): string {
+  const facts = [
+    `Clinic: ${input.clinicName} (phone ${input.clinicPhone})`,
+    `Patient name: ${input.customerName ?? "unknown"}`,
+    `Request: ${input.service ?? "not specified"}`,
+    `Preferred day: ${input.preferredDate ? formatDateForMessage(input.preferredDate) : "not specified"}`,
+    `Preferred time: ${input.preferredTime ? formatTimeForMessage(input.preferredTime) : "not specified"}`,
+    `Appointment status: ${input.status === "booked" ? "BOOKED by the clinic" : "NOT yet booked"}`,
+  ].join("\n");
+  return `Write a WhatsApp message from a dental clinic's receptionist to a patient who left a request.
+
+${facts}
+
+Rules:
+- ${LANGUAGE_INSTRUCTIONS[input.language]} Tone: ${TONES[input.tone]}.
+- Under 400 characters. No emojis, no markdown, no links.
+- If the appointment is NOT yet booked, never say it is confirmed or booked: offer to arrange a time and ask the patient to reply.
+- No medical advice, no diagnosis, no promises about treatment results or prices.
+- Sign off with the clinic name.`;
 }

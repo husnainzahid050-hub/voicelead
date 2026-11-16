@@ -1,7 +1,7 @@
 "use client";
 
 import { CheckCircle2, Phone } from "lucide-react";
-import type { Ref } from "react";
+import type { ReactNode, Ref } from "react";
 import { CopyButton } from "@/components/intake-link/copy-button";
 import { formatPkPhone } from "@/lib/phone";
 import type { SubmitResponse } from "@/lib/intake/types";
@@ -12,6 +12,7 @@ export function SuccessPanel({
   clinicPhone,
   customerPhone,
   headingRef,
+  children,
 }: {
   result: SubmitResponse;
   clinicName: string;
@@ -19,6 +20,8 @@ export function SuccessPanel({
   customerPhone: string;
   /** Receives focus when the panel appears. */
   headingRef?: Ref<HTMLHeadingElement>;
+  /** Extra content at the end (the "delete my request" option). */
+  children?: ReactNode;
 }) {
   const urgent = result.urgency === "emergency" || result.urgency === "high";
   return (
@@ -64,6 +67,7 @@ export function SuccessPanel({
           {formatPkPhone(clinicPhone)}
         </a>
       )}
+      {children}
     </div>
   );
 }

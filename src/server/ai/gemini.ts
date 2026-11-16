@@ -1,8 +1,10 @@
 import "server-only";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
+import type { FollowUpInput } from "@/lib/leads/follow-up";
 import { generateText, Output, type LanguageModel } from "ai";
 import {
   aiExtractionSchema,
+  aiFollowUpSchema,
   aiQuestionSchema,
   aiTranscriptionSchema,
   type AiExtraction,
@@ -11,6 +13,7 @@ import {
 import {
   extractionPrompt,
   extractionSystem,
+  followUpPrompt,
   questionPrompt,
   TRANSCRIPTION_SYSTEM,
 } from "./prompts";
@@ -81,6 +84,20 @@ export class GeminiLeadAI implements LeadAI {
         prompt: questionPrompt(input.field, input.language, input.businessName),
       });
       return output.question;
+    });
+  }
+
+  async followUpMessage(input: FollowUpInput): Promise<string> {
+    return this.call("follow-up", async () => {
+      const { output } = await generateText({
+        ...REQUEST,
+        model: this.model,
+        timeout: 15_000,
+        temperature: 0.4,
+        output: Output.object({ schema: aiFollowUpSchema }),
+        prompt: followUpPrompt(input),
+      });
+      return output.message;
     });
   }
 
