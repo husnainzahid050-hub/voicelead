@@ -1,0 +1,161 @@
+// VoiceLead database schema.
+//
+// Portability rules (SQLite now, PostgreSQL later):
+// - No Prisma `enum` and no `Json` columns. Constrained values are plain strings
+//   validated against the allowlists in src/lib/constants.ts (Zod enforces them).
+// - Structured blobs (working hours, services, audit metadata) are JSON strings
+//   parsed through Zod schemas, never trusted raw.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Business {
+  id                 String   @id @default(cuid())
+  name               String
+  slug               String   @unique
+  businessType       String // allowlist: BUSINESS_TYPES
+  description        String?
+  phone              String // normalized E.164
+  email              String?
+  address            String?
+  workingHours       String // JSON: WorkingHours (see src/lib/validation)
+  services           String // JSON: string[]
+  intakeInstructions String?
+  commonQuestions    String? // JSON: string[]
+  followUpTone       String   @default("friendly") // allowlist: FOLLOW_UP_TONES
+  logoUrl            String?
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  users     User[]
+  leads     Lead[]
+  auditLogs AuditLog[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique // stored lowercase
+  name         String
+  passwordHash String // argon2id
+  role         String // allowlist: USER_ROLES (owner | staff)
+  businessId   String? // null until onboarding is complete
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  business  Business?  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sessions  Session[]
+  auditLogs AuditLog[]
+
+  @@index([businessId])
+}
+
+model Session {
+  // SHA-256 of the random session token. The raw token only ever lives in the
+  // HttpOnly cookie, so a database leak cannot be replayed as a login.
+  id        String   @id
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Lead {
+  id                String    @id @default(cuid())
+  businessId        String
+  referenceNumber   String    @unique
+  customerName      String?
+  phone             String? // normalized E.164
+  serviceNeeded     String?
+  urgency           String    @default("normal") // allowlist: URGENCIES
+  preferredDate     String? // ISO date (YYYY-MM-DD) when resolvable
+  preferredDateText String? // customer's original wording, e.g. "kal"
+  preferredTime     String? // HH:mm, 24h
+  summary           String?
+  transcript        String
+  language          String // allowlist: LANGUAGES
+  aiConfidence      Float?
+  status            String    @default("new") // allowlist: LEAD_STATUSES
+  internalNotes     String?
+  followUpMessage   String?
+  deletionTokenHash String? // SHA-256; customer may request deletion within 24h
+  deletionExpiresAt DateTime?
+  deletedAt         DateTime? // soft delete keeps the audit trail intact
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  business  Business           @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  fields    LeadField[]
+  turns     ConversationTurn[]
+  auditLogs AuditLog[]
+
+  @@index([businessId, status])
+  @@index([businessId, urgency])
+  @@index([businessId, createdAt])
+  @@index([businessId, phone])
+}
+
+model LeadField {
+  id           String   @id @default(cuid())
+  leadId       String
+  fieldName    String // allowlist: LEAD_FIELD_NAMES
+  value        String?
+  confidence   Float?
+  source       String // allowlist: FIELD_SOURCES (ai | customer | staff)
+  editedByUser Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, fieldName])
+}
+
+model ConversationTurn {
+  id        String   @id @default(cuid())
+  leadId    String
+  role      String // allowlist: TURN_ROLES (customer | assistant)
+  content   String
+  audioUrl  String? // always null in V1: raw audio is never persisted
+  createdAt DateTime @default(now())
+
+  lead Lead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([leadId, createdAt])
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  businessId String
+  userId     String? // null for customer or system actions
+  leadId     String?
+  action     String // allowlist: AUDIT_ACTIONS
+  metadata   String? // JSON; must never contain a full phone number
+  ipHash     String? // HMAC-SHA256(ip, IP_HASH_SECRET)
+  createdAt  DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  lead     Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  @@index([businessId, createdAt])
+  @@index([leadId])
+}
+
+model RateLimit {
+  key       String   @id // e.g. "intake:<ipHash>"
+  count     Int
+  windowEnd DateTime
+
+  @@index([windowEnd])
+}

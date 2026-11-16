@@ -1,0 +1,61 @@
+import type { NextConfig } from "next";
+
+const isDev = process.env.NODE_ENV !== "production";
+
+/**
+ * Baseline Content-Security-Policy.
+ * - Fonts are self-hosted by next/font, so no third-party font origins.
+ * - `blob:` in media-src lets the intake page play back its own recording.
+ * - 'unsafe-inline' scripts are a known Phase 1 compromise (Next.js inline
+ *   bootstrap scripts); Phase 5 tightens this with per-request nonces.
+ */
+const csp = [
+  "default-src 'self'",
+  `script-src 'self' 'unsafe-inline'${isDev ? " 'unsafe-eval'" : ""}`,
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: blob:",
+  "font-src 'self'",
+  "media-src 'self' blob:",
+  `connect-src 'self'${isDev ? " ws: wss:" : ""}`,
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+  ...(isDev ? [] : ["upgrade-insecure-requests"]),
+].join("; ");
+
+const securityHeaders = [
+  { key: "Content-Security-Policy", value: csp },
+  { key: "X-Content-Type-Options", value: "nosniff" },
+  { key: "X-Frame-Options", value: "DENY" },
+  { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+  // Microphone only for our own origin (the intake page); everything else off.
+  {
+    key: "Permissions-Policy",
+    value: "microphone=(self), camera=(), geolocation=(), payment=(), usb=()",
+  },
+  ...(isDev
+    ? []
+    : [
+        { key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains; preload" },
+      ]),
+];
+
+const nextConfig: NextConfig = {
+  cacheComponents: true,
+  partialPrefetching: true,
+  poweredByHeader: false,
+  turbopack: {
+    rules: {
+      "*.css": {
+        loaders: ["@tailwindcss/turbopack"],
+        as: "*.css",
+      },
+    },
+  },
+  async headers() {
+    return [{ source: "/:path*", headers: securityHeaders }];
+  },
+};
+
+export default nextConfig;
