@@ -5,7 +5,12 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { UrgencyBadge } from "@/components/ui/badge";
 
-// Phase 1 placeholder. The full marketing page is built in Phase 6.
+const trust = [
+  "Voice recordings are never stored: only the text is kept.",
+  "Every AI-filled detail is shown next to the patient's own words, and can be edited.",
+  "Nothing is sent to a patient automatically. You copy the reply and press Send in WhatsApp.",
+  "Each clinic sees only its own requests. Patients can delete theirs within 24 hours.",
+];
 
 const steps = [
   {
@@ -52,6 +57,19 @@ export default function HomePage() {
             <p className="text-muted-foreground mt-4 text-lg">
               VoiceLead captures patient requests while your front desk is closed or busy, and hands
               you a short, organized list of who to call back first.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Button asChild size="lg">
+                <Link href="/intake/smilecare-dental">
+                  <Mic aria-hidden="true" /> Try it as a patient
+                </Link>
+              </Button>
+              <Button asChild size="lg" variant="secondary">
+                <Link href="/sign-in">See the clinic dashboard</Link>
+              </Button>
+            </div>
+            <p className="text-muted-foreground mt-3 text-sm">
+              Demo clinic: SmileCare Dental, Muzaffarabad. All data is fictional.
             </p>
           </div>
 
@@ -109,6 +127,25 @@ export default function HomePage() {
                 </li>
               ))}
             </ol>
+          </div>
+        </section>
+
+        <section aria-labelledby="trust-heading" className="mx-auto max-w-5xl px-4 py-14 sm:px-6">
+          <h2 id="trust-heading" className="text-2xl font-bold tracking-tight">
+            Built for patient trust
+          </h2>
+          <ul className="mt-6 grid gap-3 md:grid-cols-2">
+            {trust.map((item) => (
+              <li key={item} className="flex items-start gap-3">
+                <ShieldCheck aria-hidden="true" className="text-success mt-0.5 size-5 shrink-0" />
+                <span>{item}</span>
+              </li>
+            ))}
+          </ul>
+          <div className="mt-10 flex flex-col gap-3 sm:flex-row">
+            <Button asChild size="lg">
+              <Link href="/sign-up">Set up your clinic</Link>
+            </Button>
           </div>
         </section>
       </main>
