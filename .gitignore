@@ -50,3 +50,7 @@ next-env.d.ts
 
 # embedded local postgres
 /.pglite/
+
+.vercel
+.env*
+!.env.example
