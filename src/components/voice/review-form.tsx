@@ -4,8 +4,9 @@ import { Phone, Send } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { FieldShell, TextField, TextareaField, fieldA11y } from "@/components/forms/field";
 import { SubmitButton } from "@/components/forms/submit-button";
+import { COPY, fill } from "@/lib/intake/copy";
 import { formatPkPhone, normalizePkPhone } from "@/lib/phone";
-import { cn } from "@/lib/utils";
+import { Bi } from "./bi";
 
 export interface ReviewValues {
   customerName: string;
@@ -39,6 +40,15 @@ export function initialReviewValues(lead?: {
   };
 }
 
+type ErrorKey = "phone" | "serviceChoice" | "message";
+
+/** Field order for moving focus to the first problem. */
+const FIELD_IDS: Record<ErrorKey, string> = {
+  message: "intake-message",
+  phone: "intake-phone",
+  serviceChoice: "intake-service",
+};
+
 /**
  * Final check before anything is sent. Every value is editable: the
  * customer, not the AI, confirms what the clinic receives.
@@ -64,13 +74,15 @@ export function ReviewForm({
   pending: boolean;
   onSubmit: (values: ReviewValues) => void;
 }) {
-  const knownService = services.includes(initial.serviceNeeded);
+  // For an urgent request with no clear service, pre-select the clinic's
+  // emergency option: one less decision for someone in pain.
+  const emergencyService = services.find((s) => /emergency|pain/i.test(s));
+  const startService = initial.serviceNeeded || (emergency && emergencyService) || "";
+  const knownService = services.includes(startService);
   const [serviceChoice, setServiceChoice] = useState(
-    knownService ? initial.serviceNeeded : initial.serviceNeeded ? OTHER : "",
+    knownService ? startService : startService ? OTHER : "",
   );
-  const [errors, setErrors] = useState<
-    Partial<Record<keyof ReviewValues | "consent" | "serviceChoice", string>>
-  >({});
+  const [errors, setErrors] = useState<Partial<Record<ErrorKey, string>>>({});
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -86,18 +98,21 @@ export function ReviewForm({
       message: get("message"),
     };
     // Same rules the server enforces, checked early for a faster fix.
-    const next: typeof errors = {};
-    if (!normalizePkPhone(values.phone))
-      next.phone = "Enter a Pakistani mobile number, e.g. 0300 1234567.";
-    if (values.serviceNeeded.length < 2) next.serviceChoice = "Choose what you need help with.";
-    if (mode === "manual" && values.message.length < 2)
-      next.message = "Tell the clinic briefly what you need.";
-    if (fd.get("consent") !== "on")
-      next.consent = `Please agree to share these details with ${clinicName}.`;
+    const next: Partial<Record<ErrorKey, string>> = {};
+    if (mode === "manual" && values.message.length < 2) {
+      next.message = "Tell the clinic briefly what you need. / مختصراً بتائیں آپ کو کیا چاہیے۔";
+    }
+    if (!normalizePkPhone(values.phone)) {
+      next.phone = "Enter a Pakistani mobile number, e.g. 0300 1234567. / درست موبائل نمبر لکھیں۔";
+    }
+    if (values.serviceNeeded.length < 2) {
+      next.serviceChoice = "Choose what you need help with. / بتائیں آپ کو کیا چاہیے۔";
+    }
     setErrors(next);
-    if (Object.keys(next).length > 0) {
-      const first = event.currentTarget.querySelector<HTMLElement>("[aria-invalid=true]");
-      first?.focus();
+    const firstError = (Object.keys(FIELD_IDS) as ErrorKey[]).find((k) => next[k]);
+    if (firstError) {
+      // Focus by id (the field exists whether or not it's marked invalid yet).
+      document.getElementById(FIELD_IDS[firstError])?.focus();
       return;
     }
     onSubmit(values);
@@ -110,7 +125,9 @@ export function ReviewForm({
           role="note"
           className="border-urgency-emergency/30 bg-urgency-emergency-bg rounded-lg border p-4"
         >
-          <p className="text-urgency-emergency font-semibold">This sounds urgent.</p>
+          <p className="text-urgency-emergency font-semibold">
+            This sounds urgent. <span lang="ur">یہ فوری معاملہ لگتا ہے۔</span>
+          </p>
           <p className="text-urgency-emergency mt-1 text-sm">
             Send your request below, and if you are in severe pain or bleeding, please also call the
             clinic now.
@@ -128,20 +145,19 @@ export function ReviewForm({
         <TextareaField
           id="intake-message"
           name="message"
-          label="What do you need help with?"
+          label={<Bi t={COPY.labelMessage} />}
           dir="auto"
           rows={3}
           defaultValue={initial.message}
           error={errors.message}
           maxLength={2000}
-          aria-invalid={errors.message ? true : undefined}
         />
       )}
 
       <TextField
         id="intake-name"
         name="customerName"
-        label="Your name"
+        label={<Bi t={COPY.labelName} />}
         autoComplete="name"
         dir="auto"
         defaultValue={initial.customerName}
@@ -150,7 +166,7 @@ export function ReviewForm({
       <TextField
         id="intake-phone"
         name="phone"
-        label="WhatsApp / phone number"
+        label={<Bi t={COPY.labelPhone} />}
         hint="The clinic will contact you on this number."
         type="tel"
         inputMode="tel"
@@ -160,7 +176,11 @@ export function ReviewForm({
         required
       />
 
-      <FieldShell id="intake-service" label="What do you need?" error={errors.serviceChoice}>
+      <FieldShell
+        id="intake-service"
+        label={<Bi t={COPY.labelService} />}
+        error={errors.serviceChoice}
+      >
         <select
           name="serviceChoice"
           value={serviceChoice}
@@ -185,7 +205,7 @@ export function ReviewForm({
           name="serviceOther"
           label="Describe it briefly"
           dir="auto"
-          defaultValue={knownService ? "" : initial.serviceNeeded}
+          defaultValue={knownService ? "" : startService}
           maxLength={80}
         />
       )}
@@ -194,7 +214,7 @@ export function ReviewForm({
         <TextField
           id="intake-date"
           name="preferredDate"
-          label="Preferred day"
+          label={<Bi t={COPY.labelDay} layout="stack" />}
           type="date"
           min={minDate}
           defaultValue={initial.preferredDate}
@@ -202,7 +222,7 @@ export function ReviewForm({
         <TextField
           id="intake-time"
           name="preferredTime"
-          label="Preferred time"
+          label={<Bi t={COPY.labelTime} layout="stack" />}
           type="time"
           defaultValue={initial.preferredTime}
         />
@@ -212,7 +232,7 @@ export function ReviewForm({
         <TextareaField
           id="intake-notes"
           name="notes"
-          label="Anything else the clinic should know?"
+          label={<Bi t={COPY.labelNotes} />}
           dir="auto"
           rows={3}
           defaultValue={initial.notes}
@@ -220,32 +240,27 @@ export function ReviewForm({
         />
       )}
 
-      <label
-        className={cn(
-          "flex cursor-pointer items-start gap-3 rounded-md border p-3",
-          errors.consent ? "border-destructive" : "border-border",
-        )}
-      >
-        <input
-          type="checkbox"
-          name="consent"
-          className="accent-primary mt-1 size-5"
-          aria-invalid={errors.consent ? true : undefined}
-          aria-describedby={errors.consent ? "intake-consent-error" : undefined}
-        />
-        <span className="text-sm">
-          I agree to share these details with <strong>{clinicName}</strong> so they can contact me
-          about this request.
+      {/* Consent stated plainly right before the action; sending is the agreement. */}
+      <p className="text-muted-foreground text-sm">
+        {fill(COPY.consent.en, clinicName)}
+        <span lang="ur" dir="rtl" className="font-urdu mt-1 block">
+          {COPY.consent.ur}
         </span>
-      </label>
-      {errors.consent && (
-        <p id="intake-consent-error" className="text-destructive -mt-3 text-sm font-medium">
-          {errors.consent}
-        </p>
-      )}
+      </p>
 
-      <SubmitButton pending={pending} pendingLabel="Sending…" size="lg" className="w-full">
-        <Send aria-hidden="true" /> Send to clinic
+      <SubmitButton
+        pending={pending}
+        pendingLabel="Sending…"
+        size="lg"
+        className="h-auto w-full py-2"
+      >
+        <Send aria-hidden="true" />{" "}
+        <Bi
+          t={COPY.send}
+          layout="stack"
+          className="items-center"
+          urClassName="text-base font-normal"
+        />
       </SubmitButton>
     </form>
   );

@@ -146,7 +146,7 @@ async function LeadDetail({ params }: Pick<PageProps<"/dashboard/leads/[id]">, "
         </CardHeader>
         <CardContent>
           <FollowUpPanel
-            key={lead.followUpMessage ?? "none"}
+            key={lead.id}
             leadId={lead.id}
             initialMessage={lead.followUpMessage}
             whatsappDigits={lead.whatsappDigits}

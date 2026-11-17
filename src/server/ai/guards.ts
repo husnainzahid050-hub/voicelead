@@ -18,30 +18,31 @@ const MAX_DAYS_AHEAD = 180;
  * least "high" whatever the model said — a missed emergency costs far more
  * than an over-cautious label the receptionist can lower.
  */
-const RED_FLAGS = [
-  "swelling",
-  "swollen",
-  "bleeding",
-  "blood",
-  "accident",
-  "broken",
-  "broke",
-  "fracture",
-  "can't open",
-  "cannot open",
-  "fever",
-  "pus",
-  "sooj",
-  "khoon",
-  "toot",
-  "bukhar",
-  "سوج",
-  "خون",
-  "ٹوٹ",
-  "بخار",
-  "پیپ",
-  "حادثہ",
+/**
+ * Latin-script terms are matched as whole words (with their common endings):
+ * a plain substring test made "toot" (Roman Urdu: broken) match "tooth",
+ * which flagged nearly every dental message as urgent.
+ */
+const LATIN_RED_FLAGS = [
+  /\bswell(ing|ed|s)?\b/,
+  /\bswollen\b/,
+  /\bbleed(ing|s)?\b/,
+  /\bblood(y)?\b/,
+  /\baccident\b/,
+  /\bbroken?\b/,
+  /\bfracture[ds]?\b/,
+  /\bcan'?t open\b/,
+  /\bcannot open\b/,
+  /\bfever\b/,
+  /\bpus\b/,
+  /\bsooj(a|i|an|gaya|gayi)?\b/,
+  /\bkhoon\b/,
+  /\btoot(a|i|ay|e|gaya|gayi)?\b/,
+  /\bbukhar\b/,
 ];
+
+/** Urdu script has no word-boundary concept in JS regex; these stems are distinctive. */
+const URDU_RED_FLAGS = ["سوج", "خون", "ٹوٹ", "بخار", "پیپ", "حادثہ"];
 
 export function normalizeForMatch(text: string): string {
   return toAsciiDigits(text).toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim();
@@ -49,7 +50,22 @@ export function normalizeForMatch(text: string): string {
 
 export function hasRedFlag(text: string): boolean {
   const t = normalizeForMatch(text);
-  return RED_FLAGS.some((w) => t.includes(w));
+  return LATIN_RED_FLAGS.some((re) => re.test(t)) || URDU_RED_FLAGS.some((w) => t.includes(w));
+}
+
+/**
+ * The summary is model-written text that staff read and act on, so treat it
+ * as untrusted: drop links, and phone numbers the customer never said
+ * (a prompt-injection attempt could otherwise plant "call this number").
+ */
+export function sanitizeSummary(summary: string, customerText: string): string {
+  const sourceDigits = toAsciiDigits(customerText).replace(/\D/g, "");
+  return summary
+    .replace(/\b(?:https?:\/\/|www\.)\S+/gi, "[link removed]")
+    .replace(/\+?\d[\d\s-]{6,}\d/g, (match) => {
+      const digits = match.replace(/\D/g, "").replace(/^(0092|92|0)/, "");
+      return digits.length >= 7 && sourceDigits.includes(digits) ? match : "[number removed]";
+    });
 }
 
 function clean(value: string | null | undefined, max: number): string | null {
@@ -117,10 +133,17 @@ export function sanitizeExtraction(raw: AiExtraction, ctx: GuardContext): Extrac
   let preferredTime = clean(raw.preferred_time, 5);
   if (preferredTime && !/^([01]\d|2[0-3]):[0-5]\d$/.test(preferredTime)) preferredTime = null;
 
-  // Urgency safety net.
+  // Urgency in both directions:
+  //  - floor: warning symptoms make it at least "high" (missed emergencies are costly)
+  //  - ceiling: "emergency" needs a warning symptom in the patient's own words, so
+  //    text typed into the public form can't simply instruct the model to jump the queue.
   let urgency: Urgency = raw.urgency;
-  if (hasRedFlag(ctx.customerText) && URGENCY_RANK[urgency] < URGENCY_RANK.high) {
+  const redFlag = hasRedFlag(ctx.customerText);
+  if (redFlag && URGENCY_RANK[urgency] < URGENCY_RANK.high) {
     flags.push("Urgency raised to high: the message mentions a warning symptom.");
+    urgency = "high";
+  } else if (!redFlag && urgency === "emergency") {
+    flags.push("Marked high, not emergency: no warning symptom found in the patient's words.");
     urgency = "high";
   }
 
@@ -133,7 +156,10 @@ export function sanitizeExtraction(raw: AiExtraction, ctx: GuardContext): Extrac
         : raw.language
       : raw.language;
 
-  const summary = clean(raw.summary, 500) ?? ctx.customerText.slice(0, 200);
+  const summary = sanitizeSummary(
+    clean(raw.summary, 500) ?? ctx.customerText.slice(0, 200),
+    ctx.customerText,
+  );
 
   return {
     customerName,

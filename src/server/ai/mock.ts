@@ -6,6 +6,7 @@ import { buildFollowUpTemplate, type FollowUpInput } from "@/lib/leads/follow-up
 import { SKIPPED_ANSWER, type ConversationTurnInput } from "@/lib/intake/types";
 import { toAsciiDigits } from "@/lib/phone";
 import type { Urgency } from "@/types/domain";
+import { hasRedFlag } from "./guards";
 import type { ExtractionInput, LeadAI, QuestionInput } from "./provider";
 import type { AiExtraction, AiTranscription } from "./schemas";
 
@@ -87,7 +88,7 @@ function findTime(text: string): string | null {
 }
 
 function findUrgency(text: string, service: string | null): Urgency {
-  if (/sooj|swell|bleed|khoon|broken|toot|ٹوٹ|خون|سوج/i.test(text)) return "emergency";
+  if (hasRedFlag(text)) return "emergency";
   if (/dard|pain|درد/i.test(text)) return "high";
   if (service === "Cleaning" || service === "Braces consultation" || service === "Dental checkup")
     return "low";
@@ -131,7 +132,7 @@ export class MockLeadAI implements LeadAI {
       preferred_date: date.iso,
       preferred_date_text: date.words,
       preferred_time: time,
-      notes: input.transcript.slice(0, 300),
+      notes: null,
       summary: `${urgency === "emergency" ? "URGENT: contact this patient as soon as possible. " : ""}Patient requests ${
         service?.toLowerCase() ?? "help"
       }${date.words ? ` (${date.words})` : ""}.`,

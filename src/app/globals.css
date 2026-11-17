@@ -84,6 +84,13 @@
     line-height: 2.2;
   }
 
+  /* Fields with dir="auto" switch to the Urdu face when the text typed is Urdu. */
+  input[dir="auto"]:dir(rtl),
+  textarea[dir="auto"]:dir(rtl) {
+    font-family: var(--font-urdu);
+    line-height: 2;
+  }
+
   /* Browsers give fieldsets min-width: min-content, which makes them overflow
      narrow cards on phones. */
   fieldset {

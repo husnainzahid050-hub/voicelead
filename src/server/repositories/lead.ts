@@ -83,7 +83,8 @@ export async function createLead(
 
 /** Abuse protection: how many leads a business received since `since`. */
 export function countLeadsSince(businessId: string, since: Date) {
-  return db.lead.count({ where: { businessId, createdAt: { gte: since } } });
+  // Deleted (e.g. spam the clinic removed) does not count against the cap.
+  return db.lead.count({ where: { businessId, deletedAt: null, createdAt: { gte: since } } });
 }
 
 /** For the customer's own deletion request: scoped to the clinic whose page made the call. */
@@ -226,12 +227,32 @@ export async function updateLeadScoped(
   ctx: AuthContext,
   id: string,
   data: Parameters<typeof db.lead.updateMany>[0]["data"],
+  /** Optimistic concurrency, e.g. `{ status: "new" }`: only update if still in that state. */
+  expect: { status?: string } = {},
 ): Promise<boolean> {
   const result = await db.lead.updateMany({
-    where: { id, businessId: ctx.businessId, deletedAt: null },
+    where: { id, businessId: ctx.businessId, deletedAt: null, ...expect },
     data,
   });
   return result.count === 1;
+}
+
+/** Leads moved to "booked" since `since` and still booked (from the audit trail). */
+export async function countBookedSince(ctx: AuthContext, since: Date): Promise<number> {
+  const changes = await db.auditLog.findMany({
+    where: {
+      businessId: ctx.businessId,
+      action: "lead.status_changed",
+      createdAt: { gte: since },
+      metadata: { contains: '"to":"booked"' },
+    },
+    select: { leadId: true },
+  });
+  const ids = [...new Set(changes.flatMap((c) => (c.leadId ? [c.leadId] : [])))];
+  if (ids.length === 0) return 0;
+  return db.lead.count({
+    where: { id: { in: ids }, businessId: ctx.businessId, status: "booked", deletedAt: null },
+  });
 }
 
 /** Field edits by staff: update the lead and record provenance, atomically. */

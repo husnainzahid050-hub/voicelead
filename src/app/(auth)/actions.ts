@@ -7,13 +7,7 @@ import { safeNextPath } from "@/lib/safe-redirect";
 import { signInSchema, signUpSchema } from "@/lib/schemas/auth";
 import { getCurrentUser } from "@/server/auth/guards";
 import { createSession, destroySession } from "@/server/auth/session";
-import {
-  clearRateLimit,
-  consume,
-  describeRetry,
-  isRateLimited,
-  recordHit,
-} from "@/server/rate-limit";
+import { clearRateLimit, consume, describeRetry } from "@/server/rate-limit";
 import { writeAudit } from "@/server/repositories/audit";
 import { getClientIpHash, hmac } from "@/server/request";
 import { registerOwner, verifyCredentials } from "@/server/services/auth";
@@ -28,29 +22,32 @@ export async function signInAction(_prev: ActionState, fd: FormData): Promise<Ac
   if (!parsed.success) return actionError(CHECK_FIELDS, zodFieldErrors(parsed.error));
 
   const ipHash = await getClientIpHash();
-  const emailKey = `signin:email:${hmac(parsed.data.email)}`;
-  const ipKey = `signin:ip:${ipHash}`;
+  const emailHash = hmac(parsed.data.email);
+  // Three counters:
+  //  - email+IP: tight. Stops guessing from one network without letting a
+  //    stranger lock the owner out from theirs.
+  //  - email:    loose ceiling against guessing spread over many IPs.
+  //  - IP:       stops one network trying many accounts.
+  const keys = [
+    [`signin:email-ip:${emailHash}:${ipHash}`, AUTH_RATE_LIMITS.signInPerEmailIp],
+    [`signin:email:${emailHash}`, AUTH_RATE_LIMITS.signInPerEmail],
+    [`signin:ip:${ipHash}`, AUTH_RATE_LIMITS.signInPerIp],
+  ] as const;
 
-  const [byEmail, byIp] = await Promise.all([
-    isRateLimited(emailKey, AUTH_RATE_LIMITS.signInPerEmail),
-    isRateLimited(ipKey, AUTH_RATE_LIMITS.signInPerIp),
-  ]);
-  if (byEmail.limited || byIp.limited) {
-    const wait = Math.max(byEmail.retryAfterSeconds, byIp.retryAfterSeconds);
+  // Count the attempt BEFORE checking the password, atomically, so a burst of
+  // parallel requests cannot all slip under the limit.
+  const counts = await Promise.all(keys.map(([key, rule]) => consume(key, rule)));
+  const blocked = counts.filter((c) => c.limited);
+  if (blocked.length > 0) {
+    const wait = Math.max(...blocked.map((c) => c.retryAfterSeconds));
     return actionError(`Too many sign-in attempts. Please try again in ${describeRetry(wait)}.`);
   }
 
   const result = await verifyCredentials(parsed.data);
-  if (!result.ok) {
-    // Only failures count, so a busy clinic signing in often is never locked out.
-    await Promise.all([
-      recordHit(emailKey, AUTH_RATE_LIMITS.signInPerEmail),
-      recordHit(ipKey, AUTH_RATE_LIMITS.signInPerIp),
-    ]);
-    return actionError("Email or password is incorrect.");
-  }
+  if (!result.ok) return actionError("Email or password is incorrect.");
 
-  await clearRateLimit(emailKey);
+  // A successful sign-in refunds this user's attempts (a busy clinic is never locked out).
+  await Promise.all([clearRateLimit(keys[0][0]), clearRateLimit(keys[1][0])]);
   await destroySession(); // rotate: never reuse a session that existed before sign-in
   await createSession(result.userId);
   if (result.businessId) {

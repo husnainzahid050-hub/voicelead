@@ -8,11 +8,14 @@ import {
   RotateCcw,
   SkipForward,
   ShieldCheck,
+  WifiOff,
 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Textarea } from "@/components/ui/textarea";
+import { LIMITS } from "@/lib/constants";
+import { COPY, ERROR_UR, RECORDER_COPY, fill, type BiText } from "@/lib/intake/copy";
 import { textDirection } from "@/lib/intake/language";
 import {
   SKIPPED_ANSWER,
@@ -20,17 +23,17 @@ import {
   type ConversationTurnInput,
   type SubmitResponse,
 } from "@/lib/intake/types";
-import { LIMITS } from "@/lib/constants";
-import { normalizePkPhone, formatPkPhone } from "@/lib/phone";
+import { formatPkPhone, normalizePkPhone } from "@/lib/phone";
 import { cn } from "@/lib/utils";
+import { Bi } from "./bi";
+import { DeleteRequest } from "./delete-request";
 import { createIntakeApi, type ApiResult, type ClientErrorCode } from "./intake-api";
 import { IntakeAlert } from "./intake-alert";
 import { RecordButton } from "./record-button";
 import { ReviewForm, initialReviewValues, type ReviewValues } from "./review-form";
 import { SpeakButton } from "./speak-button";
-import { DeleteRequest } from "./delete-request";
 import { SuccessPanel } from "./success-panel";
-import { useRecorder, type RecorderError } from "./use-recorder";
+import { useRecorder } from "./use-recorder";
 
 type Step =
   | "welcome"
@@ -45,22 +48,27 @@ type Step =
   | "done"
   | "deleted";
 
-const RECORDER_MESSAGES: Record<RecorderError, string> = {
-  denied:
-    "Microphone access is blocked. Allow it in your browser's site settings, or type your request instead.",
-  no_mic: "We couldn't find a microphone on this device. You can type your request instead.",
-  unsupported:
-    "Voice recording isn't supported in this browser. You can type your request instead.",
-  too_short: "That was too short for us to hear. Tap the microphone and speak for a few seconds.",
-  failed: "The microphone couldn't start. Please try again or type your request.",
+/** Screen-reader announcements for each step (announced once, not every second). */
+const STEP_STATUS: Partial<Record<Step, BiText>> = {
+  recording: { en: "Recording. Tap the button again when you are finished.", ur: "ریکارڈنگ شروع" },
+  transcribing: COPY.transcribing,
+  analyzing: COPY.analyzing,
+  submitting: COPY.submitting,
 };
 
-/** Screen-reader announcements for each step (also helps sighted users). */
-const STEP_STATUS: Partial<Record<Step, string>> = {
-  recording: "Recording. Tap the button again when you are finished.",
-  transcribing: "Listening to your message…",
-  analyzing: "Understanding your request…",
-  submitting: "Sending your request to the clinic…",
+interface AlertState {
+  message: string;
+  code?: ClientErrorCode;
+  retry?: () => void;
+}
+
+const subscribeOnline = (cb: () => void) => {
+  window.addEventListener("online", cb);
+  window.addEventListener("offline", cb);
+  return () => {
+    window.removeEventListener("online", cb);
+    window.removeEventListener("offline", cb);
+  };
 };
 
 export interface IntakeBusinessView {
@@ -83,7 +91,6 @@ export function IntakeFlow({
     () => createIntakeApi(business.slug, intakeToken),
     [business.slug, intakeToken],
   );
-  const recorder = useRecorder();
 
   const [step, setStep] = useState<Step>("welcome");
   const [typed, setTyped] = useState(false);
@@ -91,25 +98,40 @@ export function IntakeFlow({
   const [turns, setTurns] = useState<ConversationTurnInput[]>([]);
   const [analysis, setAnalysis] = useState<AnalyzeResponse | null>(null);
   const [answer, setAnswer] = useState("");
+  const [answerHint, setAnswerHint] = useState(false);
   const [answerBusy, setAnswerBusy] = useState(false);
-  const [alert, setAlert] = useState<{
-    message: string;
-    code?: ClientErrorCode;
-    retry?: () => void;
-  } | null>(null);
+  const [alert, setAlert] = useState<AlertState | null>(null);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [submittedPhone, setSubmittedPhone] = useState("");
   const [manualInitial, setManualInitial] = useState<ReviewValues>(() => initialReviewValues());
   /** The customer's edits on the review screen, kept if sending fails. */
   const [reviewDraft, setReviewDraft] = useState<ReviewValues | null>(null);
-
-  // Move focus to each new step's heading for keyboard and screen-reader users.
-  const headingRef = useRef<HTMLHeadingElement>(null);
+  /** Incremented per voice answer, so a late transcript can't fill the next question. */
+  const answerRequestRef = useRef(0);
+  const stepRef = useRef<Step>(step);
   useEffect(() => {
+    stepRef.current = step;
+  }, [step]);
+
+  const online = useSyncExternalStore(
+    subscribeOnline,
+    () => navigator.onLine,
+    () => true,
+  );
+
+  // Move focus to each new step's heading (not on first load: that would
+  // scroll the page and show an invisible focus ring).
+  const headingRef = useRef<HTMLHeadingElement>(null);
+  const firstRender = useRef(true);
+  useEffect(() => {
+    if (firstRender.current) {
+      firstRender.current = false;
+      return;
+    }
     headingRef.current?.focus();
   }, [step]);
 
-  /** Shared failure handling: AI down → short form; expired page → refresh. */
+  // ── Shared helpers ──────────────────────────────────────────────────
   function fail<T>(res: Extract<ApiResult<T>, { ok: false }>, backTo: Step, retry?: () => void) {
     if (res.code === "ai_unavailable" || res.code === "unsupported_media") {
       setManualInitial({ ...initialReviewValues(analysis?.lead), message: transcript });
@@ -122,6 +144,41 @@ export function IntakeFlow({
   }
 
   // ── Recording the main request ──────────────────────────────────────
+  async function transcribeRequest(blob: Blob) {
+    setStep("transcribing");
+    const res = await api.transcribe(blob);
+    if (!res.ok) {
+      fail(res, "welcome", res.code === "network" ? () => void transcribeRequest(blob) : undefined);
+      return;
+    }
+    setAlert(null);
+    setTyped(false);
+    setTranscript(res.data.transcript);
+    setStep("transcript");
+  }
+
+  async function transcribeAnswer(blob: Blob) {
+    const requestId = ++answerRequestRef.current;
+    setAnswerBusy(true);
+    const res = await api.transcribe(blob);
+    if (requestId !== answerRequestRef.current) return; // the patient already moved on
+    setAnswerBusy(false);
+    if (res.ok) setAnswer(res.data.transcript.slice(0, LIMITS.maxAnswerChars));
+    else setAlert({ message: res.message, code: res.code });
+  }
+
+  // A recording that reaches the 3-minute limit stops by itself: use it.
+  const handleAutoStop = useCallback(
+    (blob: Blob) => {
+      if (stepRef.current === "recording") void transcribeRequest(blob);
+      else if (stepRef.current === "clarify") void transcribeAnswer(blob);
+    },
+    // transcribe* only use setters, stable refs and `api`.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [api],
+  );
+  const recorder = useRecorder({ onAutoStop: handleAutoStop });
+
   async function startRequestRecording() {
     setAlert(null);
     if (await recorder.start()) setStep("recording");
@@ -136,21 +193,9 @@ export function IntakeFlow({
     await transcribeRequest(blob);
   }
 
-  async function transcribeRequest(blob: Blob) {
-    setStep("transcribing");
-    const res = await api.transcribe(blob);
-    if (!res.ok) {
-      fail(res, "welcome", res.code === "network" ? () => void transcribeRequest(blob) : undefined);
-      return;
-    }
-    setAlert(null);
-    setTyped(false);
-    setTranscript(res.data.transcript);
-    setStep("transcript");
-  }
-
   function typeInstead() {
     setAlert(null);
+    recorder.clearError();
     setTyped(true);
     setTranscript("");
     setStep("transcript");
@@ -171,14 +216,22 @@ export function IntakeFlow({
     setStep(res.data.question ? "clarify" : "review");
   }
 
-  function sendAnswer(skip: boolean) {
+  async function sendAnswer(skip: boolean) {
     const question = analysis?.question;
     if (!question) return;
     const content = skip ? SKIPPED_ANSWER : answer.trim();
-    if (!content) return;
+    if (!content) {
+      setAnswerHint(true);
+      return;
+    }
+    // Moving on mid-recording: turn the mic off and drop that audio.
+    if (recorder.status === "recording") await recorder.cancel();
+    answerRequestRef.current++; // ignore any transcription still in flight
+    setAnswerBusy(false);
+    setAnswerHint(false);
     const next: ConversationTurnInput[] = [
       ...turns,
-      { role: "assistant", content: question.text, field: question.field },
+      { role: "assistant", content: question.text, field: question.field, sig: question.sig },
       { role: "customer", content },
     ];
     setAnswer("");
@@ -188,15 +241,11 @@ export function IntakeFlow({
   async function recordAnswer() {
     if (recorder.status === "recording") {
       const blob = await recorder.stop();
-      if (!blob) return;
-      setAnswerBusy(true);
-      const res = await api.transcribe(blob);
-      setAnswerBusy(false);
-      if (res.ok) setAnswer(res.data.transcript.slice(0, LIMITS.maxAnswerChars));
-      else setAlert({ message: res.message, code: res.code });
+      if (blob) await transcribeAnswer(blob);
       return;
     }
     setAlert(null);
+    setAnswerHint(false);
     await recorder.start();
   }
 
@@ -231,31 +280,47 @@ export function IntakeFlow({
     setStep("done");
   }
 
-  const recorderMessage = recorder.error ? RECORDER_MESSAGES[recorder.error] : null;
+  const recorderMessage = recorder.error ? RECORDER_COPY[recorder.error] : null;
   const busy = step === "transcribing" || step === "analyzing" || step === "submitting";
   const question = analysis?.question ?? null;
+  const answerLocked = answerBusy || recorder.status !== "idle";
+  const busyText = STEP_STATUS[step];
 
   return (
     <Card>
       <CardContent className="space-y-6">
         <p role="status" aria-live="polite" className="sr-only">
-          {STEP_STATUS[step] ?? ""}
+          {busyText?.en ?? ""}
         </p>
 
+        {!online && step !== "done" && step !== "deleted" && (
+          <div
+            role="status"
+            className="border-urgency-high/30 bg-urgency-high-bg text-urgency-high flex items-start gap-2 rounded-lg border p-3 text-sm"
+          >
+            <WifiOff aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <Bi t={COPY.offline} layout="stack" />
+          </div>
+        )}
+
         {alert && step !== "done" && (
-          <IntakeAlert message={alert.message} onRetry={alert.retry}>
+          <IntakeAlert
+            message={alert.message}
+            urdu={alert.code ? ERROR_UR[alert.code] : undefined}
+            onRetry={alert.retry}
+          >
             {alert.code === "session_expired" && (
               <Button type="button" variant="secondary" onClick={() => window.location.reload()}>
-                Refresh page
+                <Bi t={COPY.refresh} />
               </Button>
             )}
           </IntakeAlert>
         )}
         {recorderMessage && (step === "welcome" || step === "clarify") && (
-          <IntakeAlert message={recorderMessage}>
+          <IntakeAlert message={recorderMessage.en} urdu={recorderMessage.ur}>
             {step === "welcome" && recorder.error !== "too_short" && (
               <Button type="button" variant="secondary" onClick={typeInstead}>
-                <Keyboard aria-hidden="true" /> Type instead
+                <Keyboard aria-hidden="true" /> <Bi t={COPY.typeInstead} />
               </Button>
             )}
           </IntakeAlert>
@@ -270,31 +335,37 @@ export function IntakeFlow({
               status={recorder.status}
               seconds={recorder.seconds}
               maxSeconds={recorder.maxSeconds}
-              onStart={startRequestRecording}
-              onStop={finishRequestRecording}
+              onStart={() => void startRequestRecording()}
+              onStop={() => void finishRequestRecording()}
             />
             {step === "welcome" && (
               <>
                 <p className="text-muted-foreground flex max-w-sm items-start gap-2 text-left text-sm">
                   <ShieldCheck aria-hidden="true" className="text-success mt-0.5 size-4 shrink-0" />
                   <span>
-                    Your voice is turned into text and then deleted. Only {business.name} sees your
-                    request. Nothing is sent until you confirm.
+                    {fill(COPY.privacy.en, business.name)}
+                    <span lang="ur" dir="rtl" className="font-urdu mt-1 block">
+                      {COPY.privacy.ur}
+                    </span>
                   </span>
                 </p>
                 <Button type="button" variant="link" onClick={typeInstead}>
-                  <Keyboard aria-hidden="true" /> Prefer to type?
+                  <Keyboard aria-hidden="true" /> <Bi t={COPY.preferType} />
                 </Button>
               </>
             )}
           </section>
         )}
 
-        {busy && (
+        {busy && busyText && (
           <div className="flex flex-col items-center gap-3 py-10 text-center">
-            <Loader2 aria-hidden="true" className="text-primary size-10 animate-spin" />
+            <Loader2 aria-hidden="true" className="text-primary size-10 motion-safe:animate-spin" />
             <h2 ref={headingRef} tabIndex={-1} className="text-lg font-semibold outline-none">
-              {STEP_STATUS[step]}
+              <Bi
+                t={busyText}
+                layout="stack"
+                urClassName="text-muted-foreground text-base font-normal"
+              />
             </h2>
           </div>
         )}
@@ -308,12 +379,14 @@ export function IntakeFlow({
                 tabIndex={-1}
                 className="text-lg font-semibold outline-none"
               >
-                {typed ? "Describe what you need" : "Here's what we heard"}
+                <Bi
+                  t={typed ? COPY.describeTitle : COPY.heardTitle}
+                  layout="stack"
+                  urClassName="text-base font-normal"
+                />
               </h2>
               <p className="text-muted-foreground text-sm">
-                {typed
-                  ? "Write in Urdu or English, for example: tooth pain since yesterday, want to come tomorrow evening."
-                  : "Fix anything we got wrong before continuing."}
+                <Bi t={typed ? COPY.describeHint : COPY.heardHint} layout="stack" />
               </p>
             </div>
             <Textarea
@@ -329,14 +402,14 @@ export function IntakeFlow({
               <Button
                 type="button"
                 size="lg"
-                disabled={transcript.trim().length < 2}
+                disabled={transcript.trim().length < 2 || !online}
                 onClick={() => void analyze([], "transcript")}
               >
-                Continue <ArrowRight aria-hidden="true" />
+                <Bi t={COPY.continue} /> <ArrowRight aria-hidden="true" />
               </Button>
               <Button type="button" variant="secondary" onClick={() => setStep("welcome")}>
                 {typed ? <Mic aria-hidden="true" /> : <RotateCcw aria-hidden="true" />}
-                {typed ? "Speak instead" : "Record again"}
+                <Bi t={typed ? COPY.speakInstead : COPY.recordAgain} />
               </Button>
             </div>
           </section>
@@ -344,7 +417,9 @@ export function IntakeFlow({
 
         {step === "clarify" && question && (
           <section aria-labelledby="step-heading" className="space-y-4">
-            <p className="text-muted-foreground text-sm font-medium">One quick question</p>
+            <p className="text-muted-foreground text-sm font-medium">
+              <Bi t={COPY.oneQuestion} />
+            </p>
             <div className="bg-primary-soft flex items-start gap-2 rounded-lg p-4">
               <h2
                 id="step-heading"
@@ -364,14 +439,18 @@ export function IntakeFlow({
               className="space-y-3"
               onSubmit={(e) => {
                 e.preventDefault();
-                sendAnswer(false);
+                void sendAnswer(false);
               }}
             >
               <div className="flex items-center gap-2">
                 <input
                   aria-label="Your answer"
+                  aria-describedby={answerHint ? "answer-hint" : undefined}
                   value={answer}
-                  onChange={(e) => setAnswer(e.target.value)}
+                  onChange={(e) => {
+                    setAnswer(e.target.value);
+                    setAnswerHint(false);
+                  }}
                   dir="auto"
                   maxLength={LIMITS.maxAnswerChars}
                   inputMode={question.field === "phone" ? "tel" : "text"}
@@ -382,8 +461,12 @@ export function IntakeFlow({
                         ? "name"
                         : "off"
                   }
-                  placeholder={answerBusy ? "Listening…" : "Type or tap the mic"}
-                  disabled={answerBusy || recorder.status === "recording"}
+                  placeholder={
+                    answerBusy
+                      ? "Listening… / سن رہے ہیں"
+                      : `${COPY.answerPlaceholder.en} / ${COPY.answerPlaceholder.ur}`
+                  }
+                  disabled={answerLocked}
                   className="border-border-strong bg-background min-h-12 min-w-0 flex-1 rounded-md border px-3 text-base"
                 />
                 <RecordButton
@@ -393,16 +476,32 @@ export function IntakeFlow({
                   maxSeconds={recorder.maxSeconds}
                   onStart={() => void recordAnswer()}
                   onStop={() => void recordAnswer()}
-                  label="Answer by voice"
+                  label={{ en: "Answer by voice", ur: "بول کر جواب دیں" }}
                 />
               </div>
+              {recorder.status === "recording" && (
+                <p className="text-destructive text-sm font-medium">
+                  ● {Math.floor(recorder.seconds / 60)}:
+                  {String(recorder.seconds % 60).padStart(2, "0")} <Bi t={COPY.recordingAnswer} />
+                </p>
+              )}
+              {answerHint && (
+                <p id="answer-hint" className="text-urgency-high text-sm font-medium">
+                  <Bi t={COPY.answerEmpty} />
+                </p>
+              )}
               <div className="flex flex-col gap-3 sm:flex-row-reverse sm:justify-between">
-                <Button type="submit" size="lg" disabled={!answer.trim() || answerBusy}>
-                  Next <ArrowRight aria-hidden="true" />
+                <Button type="submit" size="lg" disabled={answerLocked || !online}>
+                  <Bi t={COPY.next} /> <ArrowRight aria-hidden="true" />
                 </Button>
                 {question.skippable && (
-                  <Button type="button" variant="ghost" onClick={() => sendAnswer(true)}>
-                    <SkipForward aria-hidden="true" /> Skip this question
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={answerBusy || !online}
+                    onClick={() => void sendAnswer(true)}
+                  >
+                    <SkipForward aria-hidden="true" /> <Bi t={COPY.skip} />
                   </Button>
                 )}
               </div>
@@ -419,19 +518,16 @@ export function IntakeFlow({
                 tabIndex={-1}
                 className="text-lg font-semibold outline-none"
               >
-                {step === "review" ? "Please check your details" : "Send a short request"}
+                <Bi
+                  t={step === "review" ? COPY.reviewTitle : COPY.manualTitle}
+                  layout="stack"
+                  urClassName="text-base font-normal"
+                />
               </h2>
               <p className="text-muted-foreground text-sm">
-                {step === "review"
-                  ? "This is what we understood. Change anything that isn't right."
-                  : "Just a few details and the clinic will get back to you."}
+                <Bi t={step === "review" ? COPY.reviewHint : COPY.manualHint} layout="stack" />
               </p>
             </div>
-            {step === "review" && analysis && (
-              <p dir="auto" className="bg-surface rounded-md p-3 text-sm">
-                {analysis.lead.summary.replace(/^URGENT:[^.]*\.\s*/, "")}
-              </p>
-            )}
             <ReviewForm
               key={step}
               mode={step}

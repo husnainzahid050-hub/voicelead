@@ -31,7 +31,7 @@ import {
   findLeadForCustomerDeletion,
 } from "@/server/repositories/lead";
 import { writeAudit } from "@/server/repositories/audit";
-import { signToken, verifyToken } from "@/server/signing";
+import { signQuestion, signToken, verifyQuestion, verifyToken } from "@/server/signing";
 import type { FieldSource, LeadFieldName, LeadStatus } from "@/types/domain";
 
 // ── Public business view ──────────────────────────────────────────────
@@ -199,11 +199,27 @@ function isUsableQuestion(text: string): boolean {
   return t.length > 3 && t.length <= 200 && t.split(/\s+/).length <= 25 && /[?؟]$/.test(t);
 }
 
+/**
+ * Every "assistant" line must be a question this server actually asked for
+ * this clinic (signed); otherwise a patient could put words in the clinic's mouth.
+ */
+function assertServerQuestions(business: IntakeBusiness, turns: ConversationTurnInput[]): void {
+  for (const turn of turns) {
+    if (turn.role !== "assistant") continue;
+    if (!turn.field || !verifyQuestion(business.id, turn.field, turn.content, turn.sig)) {
+      throw new IntakeValidationError(
+        "This conversation could not be verified. Please start again.",
+      );
+    }
+  }
+}
+
 export async function analyzeConversation(
   business: IntakeBusiness,
   body: AnalyzeBody,
   now = new Date(),
 ): Promise<AnalyzeResponse> {
+  assertServerQuestions(business, body.turns);
   const ai = await requireAI();
   const todayIso = isoDateInTimezone(now);
   const raw = await ai.extract({
@@ -234,7 +250,12 @@ export async function analyzeConversation(
     } catch {
       // Template fallback keeps the conversation going if the model is slow or down.
     }
-    question = { field, text, skippable: isSkippable(field) };
+    question = {
+      field,
+      text,
+      skippable: isSkippable(field),
+      sig: signQuestion(business.id, field, text),
+    };
   }
 
   const extractionToken = signToken(
@@ -263,6 +284,7 @@ export async function submitIntake(
   ipHash: string,
   now = new Date(),
 ): Promise<SubmitResponse> {
+  assertServerQuestions(business, body.turns);
   const { fields } = body;
   const todayIso = isoDateInTimezone(now);
   if (

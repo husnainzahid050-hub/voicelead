@@ -84,7 +84,8 @@ export const DEFAULT_TIMEZONE = "Asia/Karachi";
 export const LIMITS = {
   maxAudioSeconds: 180,
   minAudioSeconds: 1,
-  maxAudioBytes: 5 * 1024 * 1024,
+  // Under Vercel's 4.5 MB request limit (3 min of 32 kbps Opus is ~0.7 MB).
+  maxAudioBytes: 4 * 1024 * 1024,
   maxTranscriptChars: 4000,
   maxAnswerChars: 500,
   maxFollowUpChars: 500,
@@ -100,7 +101,8 @@ export const LIMITS = {
 
 /** Auth abuse limits (per window). Keys are HMAC-hashed, never raw emails/IPs. */
 export const AUTH_RATE_LIMITS = {
-  signInPerEmail: { limit: 5, windowMs: 15 * 60_000 },
+  signInPerEmailIp: { limit: 5, windowMs: 15 * 60_000 },
+  signInPerEmail: { limit: 30, windowMs: 15 * 60_000 },
   signInPerIp: { limit: 20, windowMs: 15 * 60_000 },
   signUpPerIp: { limit: 5, windowMs: 60 * 60_000 },
 } as const;
@@ -112,6 +114,8 @@ export const INTAKE_RATE_LIMITS = {
   submitPerIp: { limit: 5, windowMs: 60 * 60_000 },
   submitPerBusinessPerDay: 300,
   deletePerIp: { limit: 10, windowMs: 60 * 60_000 },
+  /** AI calls per clinic per hour, whatever the IP: caps cost under address rotation. */
+  aiPerBusinessPerHour: { limit: 400, windowMs: 60 * 60_000 },
 } as const;
 
 /** Signed-in dashboard actions, per user. */

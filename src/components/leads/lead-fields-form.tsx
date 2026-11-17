@@ -16,9 +16,17 @@ function Provenance({ field }: { field: LeadDetailDTO["fields"][LeadFieldName] }
   if (!field || field.value === null) return null;
   if (field.editedByUser || field.source === "staff") return "Edited by your team";
   if (field.source === "customer") return "Given by the patient";
-  const pct = field.confidence !== null ? ` (${Math.round(field.confidence * 100)}%)` : "";
-  return `Understood by AI${pct}: please check`;
+  // Only flag what is actually uncertain; a warning on every field means nothing.
+  if (field.confidence !== null && field.confidence >= CHECK_BELOW) return null;
+  return (
+    <span className="text-urgency-high font-medium">
+      ⚠ Check this against the patient&rsquo;s words
+    </span>
+  );
 }
+
+/** AI values below this confidence get a "check this" hint. */
+const CHECK_BELOW = 0.8;
 
 export function LeadFieldsForm({ lead, services }: { lead: LeadDetailDTO; services: string[] }) {
   const { state, pending, onSubmit } = useFormAction(updateLeadFieldsAction);

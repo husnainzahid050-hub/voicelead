@@ -18,7 +18,7 @@ export async function openIntakeRequest(
   slug: string,
   limitName: string,
   rule: RateLimitRule,
-  options: { allowInactive?: boolean } = {},
+  options: { allowInactive?: boolean; businessRule?: RateLimitRule } = {},
 ): Promise<
   { ok: true; ctx: IntakeContext } | { ok: false; response: NextResponse<IntakeErrorBody> }
 > {
@@ -33,12 +33,25 @@ export async function openIntakeRequest(
     };
   }
 
-  const resolved = await resolveIntakeBusiness(
-    request.headers.get("x-intake-token"),
-    slug,
-    options,
-  );
+  const resolved = await resolveIntakeBusiness(request.headers.get("x-intake-token"), slug, {
+    allowInactive: options.allowInactive,
+  });
   if (!resolved.ok) return { ok: false, response: errorResponse(resolved.code) };
+
+  if (options.businessRule) {
+    const perBusiness = await consume(
+      `intake:${limitName}:biz:${resolved.business.id}`,
+      options.businessRule,
+    );
+    if (perBusiness.limited) {
+      return {
+        ok: false,
+        response: errorResponse("rate_limited", {
+          retryAfterSeconds: perBusiness.retryAfterSeconds,
+        }),
+      };
+    }
+  }
 
   return { ok: true, ctx: { business: resolved.business, ipHash } };
 }

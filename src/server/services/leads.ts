@@ -13,6 +13,7 @@ import { getLeadAI } from "@/server/ai/provider";
 import { writeAudit } from "@/server/repositories/audit";
 import { findBusinessForContext } from "@/server/repositories/business";
 import {
+  countBookedSince,
   countLeads,
   eraseLeadScoped,
   findLeadForContext,
@@ -351,7 +352,12 @@ export async function changeLeadStatus(
   });
   if (error) throw new LeadRuleError(error);
 
-  if (!(await updateLeadScoped(ctx, id, { status: to }))) throw new LeadNotFoundError();
+  // Only applies if nobody changed the status in the meantime.
+  if (!(await updateLeadScoped(ctx, id, { status: to }, { status: from }))) {
+    const stillThere = await findLeadForContext(ctx, id);
+    if (!stillThere) throw new LeadNotFoundError();
+    throw new LeadRuleError("Someone else just changed this lead. Please check its new status.");
+  }
   await writeAudit({
     businessId: ctx.businessId,
     userId: ctx.userId,
@@ -497,7 +503,7 @@ export async function getDashboardMetrics(ctx: AuthContext) {
       countLeads(ctx, { createdAt: { gte: startOfToday } }),
       countLeads(ctx, { status: open, urgency: { in: ["high", "emergency"] } }),
       countLeads(ctx, { status: open }),
-      countLeads(ctx, { status: "booked", updatedAt: { gte: thirtyDaysAgo } }),
+      countBookedSince(ctx, thirtyDaysAgo),
       recentServices(ctx, thirtyDaysAgo),
       listLeads(ctx, { filter: "all", q: null, sort: "urgent", page: 1 }),
     ]);

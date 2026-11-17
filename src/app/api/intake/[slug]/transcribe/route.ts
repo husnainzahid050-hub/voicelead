@@ -19,6 +19,7 @@ export async function POST(
     slug,
     "transcribe",
     INTAKE_RATE_LIMITS.transcribePerIp,
+    { businessRule: INTAKE_RATE_LIMITS.aiPerBusinessPerHour },
   );
   if (!opened.ok) return opened.response;
 

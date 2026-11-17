@@ -70,7 +70,7 @@ export function nextTemplateQuestion(
   fields: CustomerFields,
   alreadyAsked: AskableField[],
   language: Language,
-): ClarifyingQuestion | null {
+): Omit<ClarifyingQuestion, "sig"> | null {
   const field = missingFields(fields, alreadyAsked)[0];
   if (!field) return null;
   return { field, text: templateQuestion(field, language), skippable: isSkippable(field) };

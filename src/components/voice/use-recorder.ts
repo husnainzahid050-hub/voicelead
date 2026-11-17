@@ -16,11 +16,23 @@ function pickMimeType(): string | undefined {
 /** Recordings shorter than this are almost always accidental taps. */
 const MIN_SECONDS = 1.5;
 
+export interface RecorderOptions {
+  maxSeconds?: number;
+  /**
+   * Called with the audio when the recording stops on its own at the time
+   * limit (nobody pressed stop, so nobody is awaiting `stop()`).
+   */
+  onAutoStop?: (blob: Blob) => void;
+}
+
 /**
  * Microphone recording with a hard time limit. The audio stays in memory in
  * the browser until the caller uploads it; nothing is persisted locally.
  */
-export function useRecorder(maxSeconds: number = LIMITS.maxAudioSeconds) {
+export function useRecorder({
+  maxSeconds = LIMITS.maxAudioSeconds,
+  onAutoStop,
+}: RecorderOptions = {}) {
   const [status, setStatus] = useState<RecorderStatus>("idle");
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState<RecorderError | null>(null);
@@ -31,6 +43,13 @@ export function useRecorder(maxSeconds: number = LIMITS.maxAudioSeconds) {
   const startedAtRef = useRef(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const resolveRef = useRef<((blob: Blob | null) => void) | null>(null);
+  const discardRef = useRef(false);
+  const mountedRef = useRef(true);
+  const onAutoStopRef = useRef(onAutoStop);
+
+  useEffect(() => {
+    onAutoStopRef.current = onAutoStop;
+  }, [onAutoStop]);
 
   const releaseMic = useCallback(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -40,19 +59,32 @@ export function useRecorder(maxSeconds: number = LIMITS.maxAudioSeconds) {
   }, []);
 
   // Never leave the microphone on after the component goes away.
-  useEffect(
-    () => () => {
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      discardRef.current = true;
       if (recorderRef.current?.state === "recording") recorderRef.current.stop();
       releaseMic();
-    },
-    [releaseMic],
-  );
+    };
+  }, [releaseMic]);
 
   const stop = useCallback((): Promise<Blob | null> => {
     const recorder = recorderRef.current;
     if (!recorder || recorder.state !== "recording") return Promise.resolve(null);
     return new Promise((resolve) => {
       resolveRef.current = resolve;
+      recorder.stop();
+    });
+  }, []);
+
+  /** Stop and throw the audio away (e.g. the patient moved on mid-answer). */
+  const cancel = useCallback(async (): Promise<void> => {
+    const recorder = recorderRef.current;
+    if (!recorder || recorder.state !== "recording") return;
+    discardRef.current = true;
+    await new Promise<void>((resolve) => {
+      resolveRef.current = () => resolve();
       recorder.stop();
     });
   }, []);
@@ -85,6 +117,11 @@ export function useRecorder(maxSeconds: number = LIMITS.maxAudioSeconds) {
       setStatus("idle");
       return false;
     }
+    // The page may have closed while the permission prompt was open.
+    if (!mountedRef.current) {
+      stream.getTracks().forEach((t) => t.stop());
+      return false;
+    }
 
     const mimeType = pickMimeType();
     let recorder: MediaRecorder;
@@ -103,24 +140,34 @@ export function useRecorder(maxSeconds: number = LIMITS.maxAudioSeconds) {
     streamRef.current = stream;
     recorderRef.current = recorder;
     chunksRef.current = [];
+    discardRef.current = false;
     recorder.ondataavailable = (event) => {
       if (event.data.size > 0) chunksRef.current.push(event.data);
     };
     recorder.onstop = () => {
       const elapsed = (Date.now() - startedAtRef.current) / 1000;
       releaseMic();
-      setStatus("idle");
+      const waiting = resolveRef.current;
+      resolveRef.current = null;
       const blob = new Blob(chunksRef.current, {
         type: recorder.mimeType || mimeType || "audio/webm",
       });
       chunksRef.current = [];
+      if (!mountedRef.current) return;
+      setStatus("idle");
+
+      if (discardRef.current) {
+        discardRef.current = false;
+        waiting?.(null);
+        return;
+      }
       if (elapsed < MIN_SECONDS) {
         setError("too_short");
-        resolveRef.current?.(null);
-      } else {
-        resolveRef.current?.(blob);
+        waiting?.(null);
+        return;
       }
-      resolveRef.current = null;
+      if (waiting) waiting(blob);
+      else onAutoStopRef.current?.(blob); // reached the time limit on its own
     };
 
     startedAtRef.current = Date.now();
@@ -130,7 +177,7 @@ export function useRecorder(maxSeconds: number = LIMITS.maxAudioSeconds) {
     timerRef.current = setInterval(() => {
       const elapsed = Math.floor((Date.now() - startedAtRef.current) / 1000);
       setSeconds(elapsed);
-      // Hard cap: stop automatically at the limit.
+      // Hard cap: stop automatically at the limit (onstop hands the audio to onAutoStop).
       if (elapsed >= maxSeconds && recorder.state === "recording") recorder.stop();
     }, 250);
     return true;
@@ -138,7 +185,7 @@ export function useRecorder(maxSeconds: number = LIMITS.maxAudioSeconds) {
 
   const clearError = useCallback(() => setError(null), []);
 
-  return { status, seconds, maxSeconds, error, start, stop, clearError };
+  return { status, seconds, maxSeconds, error, start, stop, cancel, clearError };
 }
 
 export function formatClock(totalSeconds: number): string {

@@ -11,10 +11,37 @@ import { env } from "@/lib/env";
  *                   their own details but cannot forge urgency or confidence
  * Each purpose uses its own derived key, so tokens are not interchangeable.
  */
-export type TokenPurpose = "intake" | "extraction";
+export type TokenPurpose = "intake" | "extraction" | "question";
 
 function keyFor(purpose: TokenPurpose): Buffer {
   return createHmac("sha256", env.SESSION_SECRET).update(`voicelead:token:v1:${purpose}`).digest();
+}
+
+function questionMac(businessId: string, field: string, text: string): Buffer {
+  return createHmac("sha256", keyFor("question"))
+    .update(JSON.stringify([businessId, field, text.trim()]))
+    .digest();
+}
+
+/**
+ * Signature for a clarifying question the server asked. The browser sends it
+ * back with the conversation, proving the "assistant" lines weren't typed by
+ * the patient (who could otherwise put words in the clinic's mouth).
+ */
+export function signQuestion(businessId: string, field: string, text: string): string {
+  return questionMac(businessId, field, text).toString("base64url");
+}
+
+export function verifyQuestion(
+  businessId: string,
+  field: string,
+  text: string,
+  sig: string | undefined,
+): boolean {
+  if (!sig || sig.length > 64) return false;
+  const given = Buffer.from(sig, "base64url");
+  const expected = questionMac(businessId, field, text);
+  return given.length === expected.length && timingSafeEqual(given, expected);
 }
 
 export function signToken(purpose: TokenPurpose, data: unknown, ttlSeconds: number): string {

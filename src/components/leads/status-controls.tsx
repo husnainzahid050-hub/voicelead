@@ -15,6 +15,13 @@ export function StatusControls({ leadId, status }: { leadId: string; status: Lea
   const main = useFormAction(changeStatusAction);
   const other = useFormAction(changeStatusAction);
   const [choice, setChoice] = useState<LeadStatus | "">("");
+  // When the status changes, clear the dropdown: the old choice is no longer an
+  // option, and a stale value could re-apply a status nobody picked.
+  const [seenStatus, setSeenStatus] = useState(status);
+  if (status !== seenStatus) {
+    setSeenStatus(status);
+    setChoice("");
+  }
   const state = other.state.status !== "idle" ? other.state : main.state;
 
   return (

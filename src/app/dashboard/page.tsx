@@ -44,13 +44,8 @@ async function Overview() {
   ]);
   const maxService = Math.max(1, ...metrics.topServices.map((s) => s.count));
 
+  // Ordered "act now" first; history (booked) last.
   const tiles = [
-    {
-      label: "New today",
-      value: metrics.newToday,
-      icon: Sparkles,
-      href: "/dashboard/leads?sort=newest",
-    },
     {
       label: "High priority",
       value: metrics.highPriority,
@@ -63,6 +58,12 @@ async function Overview() {
       value: metrics.awaitingCallback,
       icon: PhoneCall,
       href: "/dashboard/leads?filter=ready_to_contact",
+    },
+    {
+      label: "New today",
+      value: metrics.newToday,
+      icon: Sparkles,
+      href: "/dashboard/leads?sort=newest",
     },
     {
       label: "Booked (30 days)",
@@ -107,7 +108,7 @@ async function Overview() {
               href={t.href}
               className={cn(
                 "bg-background hover:bg-surface block h-full rounded-lg border p-4",
-                t.alert ? "border-urgency-emergency/40" : "border-border",
+                t.alert ? "border-urgency-emergency/40 bg-urgency-emergency-bg" : "border-border",
               )}
             >
               <t.icon

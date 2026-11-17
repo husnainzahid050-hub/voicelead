@@ -43,6 +43,8 @@ export interface ConversationTurnInput {
   content: string;
   /** For assistant turns: which field the question asked about. */
   field?: AskableField;
+  /** For assistant turns: the server's signature for this question. */
+  sig?: string;
 }
 
 export interface ClarifyingQuestion {
@@ -50,6 +52,8 @@ export interface ClarifyingQuestion {
   text: string;
   /** Whether the customer may skip it (phone is never skippable). */
   skippable: boolean;
+  /** Echo this back on the assistant turn; unsigned assistant turns are rejected. */
+  sig: string;
 }
 
 export type IntakeErrorCode =

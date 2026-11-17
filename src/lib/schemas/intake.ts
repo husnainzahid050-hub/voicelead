@@ -18,6 +18,7 @@ export const turnSchema = z.object({
   role: turnRoleSchema,
   content: z.string().trim().min(1).max(LIMITS.maxAnswerChars),
   field: z.enum(ASKABLE_FIELDS).optional(),
+  sig: z.string().max(64).optional(),
 });
 
 export const transcriptSchema = z

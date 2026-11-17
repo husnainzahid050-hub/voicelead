@@ -2,7 +2,8 @@ import { ChevronRight, Copy, Inbox } from "lucide-react";
 import Link from "next/link";
 import { StatusBadge, UrgencyBadge } from "@/components/ui/badge";
 import { formatPreferred, timeAgo } from "@/lib/format";
-import { nextAction } from "@/lib/leads/workflow";
+import { isoDateInTimezone } from "@/lib/dates";
+import { isOpen, nextAction } from "@/lib/leads/workflow";
 import { cn } from "@/lib/utils";
 import type { LeadListItemDTO } from "@/server/services/leads";
 
@@ -29,20 +30,26 @@ export function LeadList({
     );
   }
   const now = new Date();
+  const todayIso = isoDateInTimezone(now);
   return (
     <ul className="divide-border border-border bg-background divide-y overflow-hidden rounded-lg border">
       {leads.map((lead) => {
         const action = nextAction(lead.status, lead.urgency);
         const preferred = formatPreferred(lead.preferredDate, lead.preferredTime);
+        const open = isOpen(lead.status);
+        const datePassed = open && !!lead.preferredDate && lead.preferredDate < todayIso;
         return (
           <li key={lead.id}>
             <Link
               href={`/dashboard/leads/${lead.id}`}
               className={cn(
-                "hover:bg-surface flex items-center gap-3 p-4",
-                lead.urgency === "emergency" &&
-                  action.tone === "urgent" &&
-                  "border-l-urgency-emergency border-l-4",
+                "hover:bg-surface flex items-center gap-3 border-l-4 p-4",
+                // Urgency at a glance down the left edge, for open leads only.
+                open && lead.urgency === "emergency"
+                  ? "border-l-urgency-emergency"
+                  : open && lead.urgency === "high"
+                    ? "border-l-urgency-high"
+                    : "border-l-transparent",
               )}
             >
               <div className="min-w-0 flex-1 space-y-1.5">
@@ -66,13 +73,16 @@ export function LeadList({
                     · {lead.serviceNeeded ?? "Request"}
                   </span>
                 </p>
-                <p className="text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-sm">
-                  <span className="font-mono">{lead.phoneMasked}</span>
-                  {preferred && <span>Wants {preferred}</span>}
-                  <span>{timeAgo(lead.createdAt, now)}</span>
-                  <span className="font-mono">{lead.referenceNumber}</span>
-                </p>
                 <p className={cn("text-sm", TONE[action.tone])}>{action.label}</p>
+                <p className="text-muted-foreground flex flex-wrap gap-x-3 gap-y-1 text-sm">
+                  {preferred && (
+                    <span className={cn(datePassed && "text-urgency-high font-medium")}>
+                      {datePassed ? `Wanted ${preferred} (passed)` : `Wants ${preferred}`}
+                    </span>
+                  )}
+                  <span className="tabular-nums">{timeAgo(lead.createdAt, now)}</span>
+                  <span className="font-mono">{lead.phoneMasked}</span>
+                </p>
               </div>
               <ChevronRight aria-hidden="true" className="text-muted-foreground size-5 shrink-0" />
             </Link>

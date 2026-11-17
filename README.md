@@ -59,7 +59,7 @@ flowchart LR
 
 ## Tech stack
 
-Next.js 16 (App Router, Cache Components) · React 19 · TypeScript (strict, no `any`) · Tailwind CSS v4 · Prisma 7 (SQLite locally, PostgreSQL in production) · Zod 4 · Vercel AI SDK 7 + Google Gemini · argon2id · Vitest · Playwright (end-to-end, run locally against Edge)
+Next.js 16 (App Router, Cache Components) · React 19 · TypeScript (strict, no `any`) · Tailwind CSS v4 · Prisma 7 + PostgreSQL (embedded PGlite locally, hosted in production) · Zod 4 · Vercel AI SDK 7 + Google Gemini · argon2id · Vitest · Playwright (end-to-end, run locally against Edge)
 
 ## Architecture
 
@@ -79,7 +79,7 @@ flowchart TB
     GU[AI guards<br/>no invented data]
     R[Repositories<br/>scoped by businessId]
   end
-  DB[(SQLite / Postgres)]
+  DB[(PostgreSQL)]
   GEM[[Gemini API]]
   RH --> S
   SA --> G --> S
@@ -99,7 +99,8 @@ src/
     services/          business rules (intake, leads, onboarding, settings)
     repositories/      all database access, always scoped by the session's clinic
 prisma/                schema, migrations, demo seed
-tests/                 unit + integration (real SQLite test database)
+tests/                 unit + integration (throwaway in-memory Postgres)
+scripts/local-db.mjs   embedded Postgres for local development
 ```
 
 ## Security model
@@ -134,26 +135,30 @@ Requires **Node.js 20.19+**.
 ```bash
 npm install                 # also generates the Prisma client
 cp .env.example .env        # fill in the two secrets (command in the file)
-npm run db:migrate          # create the SQLite database
-npm run db:seed             # load the demo clinics
+npm run db:seed             # create + seed the local database
 npm run dev                 # http://localhost:3000
 ```
 
-With npm 11 you may need to approve install scripts once: `npm install-scripts approve @prisma/engines prisma esbuild better-sqlite3`.
+No PostgreSQL install needed: `npm run dev` starts an embedded Postgres ([PGlite](https://pglite.dev), real Postgres compiled to WebAssembly) on port 5433, applies migrations, then starts Next.js. Data lives in `.pglite/`.
 
-| Script              | What it does                                                    |
-| ------------------- | --------------------------------------------------------------- |
-| `npm run check`     | typecheck + lint + all tests                                    |
-| `npm run test`      | unit + integration tests (creates a throwaway `prisma/test.db`) |
-| `npm run build`     | production build                                                |
-| `npm run db:studio` | browse the database                                             |
-| `npm run db:reset`  | recreate and reseed the database                                |
+With npm 11 you may need to approve install scripts once: `npm install-scripts approve @prisma/engines prisma esbuild`.
+
+| Script              | What it does                                                   |
+| ------------------- | -------------------------------------------------------------- |
+| `npm run dev`       | local Postgres + Next.js dev server                            |
+| `npm run check`     | typecheck + lint + all tests                                   |
+| `npm run test`      | unit + integration tests on a throwaway in-memory Postgres     |
+| `npm run build`     | production build (Vercel runs `vercel-build`: migrate + build) |
+| `npm run db:seed`   | (re)seed the local demo data                                   |
+| `npm run db:reset`  | wipe the local database and reseed                             |
+| `npm run db:studio` | browse the local database                                      |
 
 ## Environment variables
 
 | Variable              | Required        | Purpose                                                                                                       |
 | --------------------- | --------------- | ------------------------------------------------------------------------------------------------------------- |
-| `DATABASE_URL`        | yes             | `file:./prisma/dev.db` locally; Postgres URL in production                                                    |
+| `DATABASE_URL`        | yes             | PostgreSQL URL. Locally set automatically by `npm run dev`                                                    |
+| `DATABASE_POOL_MAX`   | no              | Connections per server instance (default 5; keep small on serverless)                                         |
 | `APP_URL`             | yes             | Public base URL, used for intake links and QR codes                                                           |
 | `SESSION_SECRET`      | yes (32+ chars) | Session token HMAC and signed tokens                                                                          |
 | `IP_HASH_SECRET`      | yes (32+ chars) | HMAC for IPs and rate-limit keys                                                                              |
@@ -180,7 +185,7 @@ Password: the value of `DEMO_OWNER_PASSWORD`. Patient page: `/intake/smilecare-d
 ## Testing
 
 - **Unit:** phone parsing, validation, permissions, session expiry, slugs, safe redirects, AI guards, question flow, signed tokens, follow-up templates, workflow rules.
-- **Integration (real SQLite DB):** tenant isolation, role checks, IDOR on every lead operation, onboarding replay protection, the full intake conversation from the spec, tampering with signed AI results, customer deletion, privacy-preserving delete, audit contents.
+- **Integration (real Postgres, in memory):** tenant isolation, role checks, IDOR on every lead operation, onboarding replay protection, the full intake conversation from the spec, tampering with signed AI results, customer deletion, privacy-preserving delete, audit contents.
 - **End-to-end (Playwright driving Edge, mock AI, fake microphone):** sign-in/out, cookie flags, open redirects, rate limiting, onboarding, voice intake to saved lead, microphone denied, invalid/paused links, dashboard workflow, follow-up copy/WhatsApp, IDOR via URL and via replayed Server Actions, CSRF, 360 px layouts. These scripts are run locally and are not yet part of the repository.
 
 ## Known limitations
@@ -188,7 +193,8 @@ Password: the value of `DEMO_OWNER_PASSWORD`. Patient page: `/intake/smilecare-d
 - **Gemini audio formats:** Chrome/Edge record `audio/webm` (Opus), which isn't on Gemini's documented format list. It generally works but should be verified with a real key; Safari's `audio/mp4` is supported.
 - **Live AI not verified in this build:** automated tests use the deterministic mock; prompt quality needs tuning with real Urdu recordings.
 - **CSP allows inline scripts.** Per-request nonces would make every page dynamic and disable Next.js's static shells; the other directives are strict and the app renders no raw HTML.
-- **SQLite is local only.** Production needs PostgreSQL (see Deployment). Search is case-insensitive for English only on SQLite.
+- **Changing a clinic's link name** breaks previously shared links, including patients' 24-hour deletion links.
+- **Sign-up reveals whether an email is registered** and there is no email verification yet (rate-limited; a known MVP trade-off).
 - **Rate limiting uses the database** (fine for MVP traffic; swap for Redis/Upstash at scale).
 - **Urgency sorting is done in memory** for up to 1,000 matching leads per clinic.
 - **Staff accounts are seeded only;** there is no invite flow yet.
@@ -196,11 +202,10 @@ Password: the value of `DEMO_OWNER_PASSWORD`. Patient page: `/intake/smilecare-d
 
 ## Deployment (Vercel + Postgres)
 
-1. Create a free Postgres database (e.g. Neon).
-2. In `prisma/schema.prisma` set `provider = "postgresql"`, install `@prisma/adapter-pg`, and use `PrismaPg` in `src/lib/db.ts` and `prisma/seed.ts`.
-3. Delete `prisma/migrations`, run `npx prisma migrate dev --name init` against the Postgres URL, and commit the new migration.
-4. On Vercel set the environment variables above (`APP_URL` = your domain; generate new secrets), then deploy. `npm install` runs `prisma generate`.
-5. Run `npx prisma migrate deploy` against production, and seed only a demo environment.
+1. Create a hosted Postgres database (Render, Neon, Supabase…) and copy its **external** connection URL.
+2. Import the GitHub repo in Vercel. Set the environment variables above (`DATABASE_URL`, `APP_URL` = your Vercel domain, fresh 32+ character secrets, `GEMINI_API_KEY`, `DEMO_OWNER_PASSWORD`, `SHOW_DEMO_LOGIN`).
+3. Deploy. Vercel runs `vercel-build`, which applies migrations (`prisma migrate deploy`) before `next build`.
+4. Seed demo data once (demo environments only): `DATABASE_URL=<url> npm run db:seed:remote`.
 
 ## Future roadmap (not in V1)
 
