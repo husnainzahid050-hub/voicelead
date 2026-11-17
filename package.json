@@ -21,7 +21,7 @@
     "check": "npm run typecheck && npm run lint && npm run test",
     "dev:remote-db": "next dev",
     "db:seed:remote": "prisma db seed",
-    "vercel-build": "prisma migrate deploy && next build"
+    "vercel-build": "prisma migrate deploy && node scripts/seed-if-empty.mjs && next build"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.121",
