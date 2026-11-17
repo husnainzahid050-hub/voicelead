@@ -163,7 +163,7 @@ With npm 11 you may need to approve install scripts once: `npm install-scripts a
 | `SESSION_SECRET`      | yes (32+ chars) | Session token HMAC and signed tokens                                                                          |
 | `IP_HASH_SECRET`      | yes (32+ chars) | HMAC for IPs and rate-limit keys                                                                              |
 | `GEMINI_API_KEY`      | for AI          | Free key from Google AI Studio. Without it, intake falls back to the short form and follow-ups use templates. |
-| `GEMINI_MODEL`        | no              | Defaults to `gemini-flash-latest`                                                                                |
+| `GEMINI_MODEL`        | no              | Defaults to `gemini-flash-lite-latest`                                                                                |
 | `AI_PROVIDER`         | no              | `gemini` (default) or `mock` (rule-based, for automated tests only)                                           |
 | `DEMO_OWNER_PASSWORD` | for seeding     | Password for the demo accounts                                                                                |
 | `SHOW_DEMO_LOGIN`     | no              | `true` shows the demo accounts on the sign-in page                                                            |

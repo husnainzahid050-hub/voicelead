@@ -121,8 +121,11 @@ export class GeminiLeadAI implements LeadAI {
 
   /** Normalise every failure to AiUnavailableError, logging only the operation and error type. */
   private async call<T>(operation: string, fn: () => Promise<T>): Promise<T> {
+    const started = Date.now();
     try {
-      return await fn();
+      const result = await fn();
+      console.info(`[ai] gemini ${operation} ok in ${Date.now() - started}ms`);
+      return result;
     } catch (error) {
       // Never log prompts, transcripts, keys or provider payloads.
       const kind = error instanceof Error ? error.name : "UnknownError";
