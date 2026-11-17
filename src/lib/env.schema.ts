@@ -17,7 +17,7 @@ export const serverEnvSchema = z.object({
   IP_HASH_SECRET: z.string().min(32, "IP_HASH_SECRET must be at least 32 characters"),
   // Required from Phase 3 onward; optional so the foundation runs without a key.
   GEMINI_API_KEY: z.string().min(1).optional(),
-  GEMINI_MODEL: z.string().min(1).default("gemini-2.5-flash"),
+  GEMINI_MODEL: z.string().min(1).default("gemini-flash-latest"),
   // "mock" = deterministic rule-based stand-in for automated tests only.
   AI_PROVIDER: z.enum(["gemini", "mock"]).default("gemini"),
   // When "true", the sign-in page shows the seeded demo accounts and password.

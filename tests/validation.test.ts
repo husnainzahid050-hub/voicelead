@@ -120,7 +120,7 @@ describe("parseServerEnv", () => {
   it("accepts a complete config and treats an empty Gemini key as unset", () => {
     const env = parseServerEnv({ ...valid, GEMINI_API_KEY: "" });
     expect(env.GEMINI_API_KEY).toBeUndefined();
-    expect(env.GEMINI_MODEL).toBe("gemini-2.5-flash");
+    expect(env.GEMINI_MODEL).toBe("gemini-flash-latest");
   });
 
   it("requires a PostgreSQL database URL", () => {

@@ -163,7 +163,7 @@ With npm 11 you may need to approve install scripts once: `npm install-scripts a
 | `SESSION_SECRET`      | yes (32+ chars) | Session token HMAC and signed tokens                                                                          |
 | `IP_HASH_SECRET`      | yes (32+ chars) | HMAC for IPs and rate-limit keys                                                                              |
 | `GEMINI_API_KEY`      | for AI          | Free key from Google AI Studio. Without it, intake falls back to the short form and follow-ups use templates. |
-| `GEMINI_MODEL`        | no              | Defaults to `gemini-2.5-flash`                                                                                |
+| `GEMINI_MODEL`        | no              | Defaults to `gemini-flash-latest`                                                                                |
 | `AI_PROVIDER`         | no              | `gemini` (default) or `mock` (rule-based, for automated tests only)                                           |
 | `DEMO_OWNER_PASSWORD` | for seeding     | Password for the demo accounts                                                                                |
 | `SHOW_DEMO_LOGIN`     | no              | `true` shows the demo accounts on the sign-in page                                                            |
@@ -200,12 +200,14 @@ Password: the value of `DEMO_OWNER_PASSWORD`. Patient page: `/intake/smilecare-d
 - **Staff accounts are seeded only;** there is no invite flow yet.
 - Relative dates ("kal") are resolved by the AI against Pakistan time; staff should confirm.
 
-## Deployment (Vercel + Postgres)
+## Deployment (Vercel + Neon Postgres)
 
-1. Create a hosted Postgres database (Render, Neon, Supabase…) and copy its **external** connection URL.
-2. Import the GitHub repo in Vercel. Set the environment variables above (`DATABASE_URL`, `APP_URL` = your Vercel domain, fresh 32+ character secrets, `GEMINI_API_KEY`, `DEMO_OWNER_PASSWORD`, `SHOW_DEMO_LOGIN`).
-3. Deploy. Vercel runs `vercel-build`, which applies migrations (`prisma migrate deploy`) before `next build`.
-4. Seed demo data once (demo environments only): `DATABASE_URL=<url> npm run db:seed:remote`.
+Live demo: **https://voicelead.vercel.app** (demo logins are shown on the sign-in page).
+
+1. Import the GitHub repo in Vercel.
+2. Project → **Storage** → create a **Neon** database and connect it to the project. This sets `DATABASE_URL` (pooled, used by the app) and `DATABASE_URL_UNPOOLED` (direct, used for migrations).
+3. Set the remaining variables: `APP_URL` (your Vercel domain), fresh 32+ character `SESSION_SECRET` and `IP_HASH_SECRET`, `GEMINI_API_KEY`, `DATABASE_POOL_MAX=3`, and for a public demo `SHOW_DEMO_LOGIN=true`, `DEMO_OWNER_PASSWORD`, `SEED_DEMO_DATA=true`.
+4. Push to `main`. Vercel runs `vercel-build`: `prisma migrate deploy`, then `scripts/seed-if-empty.mjs` (loads demo clinics only when `SEED_DEMO_DATA=true` **and** the database has no businesses, so it never touches real data), then `next build`.
 
 ## Future roadmap (not in V1)
 
