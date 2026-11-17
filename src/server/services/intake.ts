@@ -233,6 +233,7 @@ export async function analyzeConversation(
   const lead = sanitizeExtraction(raw, {
     customerText: customerText(body.transcript, body.turns),
     todayIso,
+    services: business.services,
   });
 
   const asked = askedFields(body.turns);

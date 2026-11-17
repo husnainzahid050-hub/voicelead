@@ -40,6 +40,7 @@ Rules:
 - Keep the customer's name in the same script and spelling they used.
 - Resolve relative days against today. In an appointment request, Urdu "kal" means tomorrow and "parson" means the day after tomorrow. Put the customer's original words in preferred_date_text.
 - preferred_time: convert to 24-hour HH:mm ("shaam 5 baje" = 17:00, "subah 10" = 10:00). Vague times like "evening" stay null.
+- service_needed: copy the closest service from the list above exactly as written (for example, any tooth pain or toothache → the pain/emergency service; teeth cleaning → the cleaning service). Only use your own short words when none of the listed services fits.
 - urgency: emergency = severe pain with swelling, bleeding that won't stop, trauma/broken tooth, fever or difficulty opening the mouth; high = significant pain or a lost filling/crown; normal = a problem needing a visit; low = routine (cleaning, consultation, questions).
 - Do not diagnose and do not give medical advice. Describe symptoms only as the customer did.
 - summary: one or two plain English sentences for staff. If urgency is emergency, start with "URGENT: contact this patient as soon as possible."

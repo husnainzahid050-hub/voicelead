@@ -44,6 +44,17 @@ describe("sanitizeExtraction: the AI may not invent data", () => {
     expect(urdu.customerName).toBe("فاطمہ");
   });
 
+  it("snaps a service to the clinic's own spelling, keeps free text otherwise", () => {
+    const services = ["Root canal", "Emergency dental pain"];
+    const ctx = { customerText: "daant mein dard hai", todayIso: TODAY, services };
+    expect(sanitizeExtraction(raw({ service_needed: " root  CANAL " }), ctx).serviceNeeded).toBe(
+      "Root canal",
+    );
+    expect(sanitizeExtraction(raw({ service_needed: "Whitening" }), ctx).serviceNeeded).toBe(
+      "Whitening",
+    );
+  });
+
   it("removes a name the customer never said and lowers confidence", () => {
     const r = sanitizeExtraction(raw({ customer_name: "Ahmed Khan" }), {
       customerText: "daant mein dard hai",

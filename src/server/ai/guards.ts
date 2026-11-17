@@ -79,6 +79,8 @@ export interface GuardContext {
   /** Everything the customer said (transcript + answers). Assistant text excluded. */
   customerText: string;
   todayIso: string;
+  /** The clinic's service list; a case or spacing variant of one is snapped to it. */
+  services?: readonly string[];
 }
 
 /**
@@ -164,7 +166,7 @@ export function sanitizeExtraction(raw: AiExtraction, ctx: GuardContext): Extrac
   return {
     customerName,
     phone,
-    serviceNeeded: clean(raw.service_needed, 80),
+    serviceNeeded: canonicalService(clean(raw.service_needed, 80), ctx.services),
     preferredDate,
     preferredDateText: clean(raw.preferred_date_text, 60),
     preferredTime,
@@ -175,4 +177,11 @@ export function sanitizeExtraction(raw: AiExtraction, ctx: GuardContext): Extrac
     confidence: Math.round(Math.max(0, confidence) * 100) / 100,
     flags,
   };
+}
+
+/** "root canal" → "Root canal", so the review form can preselect the clinic's own option. */
+function canonicalService(value: string | null, services: readonly string[] = []): string | null {
+  if (!value) return value;
+  const key = value.toLowerCase().replace(/\s+/g, " ").trim();
+  return services.find((s) => s.toLowerCase().replace(/\s+/g, " ").trim() === key) ?? value;
 }
