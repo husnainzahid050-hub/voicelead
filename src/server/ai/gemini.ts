@@ -108,8 +108,30 @@ export class GeminiLeadAI implements LeadAI {
     } catch (error) {
       // Never log prompts, transcripts, keys or provider payloads.
       const kind = error instanceof Error ? error.name : "UnknownError";
-      console.error(`[ai] gemini ${operation} failed: ${kind}`);
+      console.error(`[ai] gemini ${operation} failed: ${kind}${describeProviderError(error)}`);
       throw new AiUnavailableError(`${operation}:${kind}`);
     }
   }
+}
+
+/**
+ * Safe diagnostics for provider failures: HTTP status plus Google's error
+ * status code (e.g. RESOURCE_EXHAUSTED). Never the message body, which could
+ * echo request content.
+ */
+function describeProviderError(error: unknown): string {
+  if (typeof error !== "object" || error === null) return "";
+  const e = error as { statusCode?: unknown; responseBody?: unknown; lastError?: unknown };
+  if (e.lastError) return describeProviderError(e.lastError); // retry wrapper
+  const parts: string[] = [];
+  if (typeof e.statusCode === "number") parts.push(`http=${e.statusCode}`);
+  if (typeof e.responseBody === "string") {
+    try {
+      const status = (JSON.parse(e.responseBody) as { error?: { status?: unknown } }).error?.status;
+      if (typeof status === "string" && /^[A-Z_]{3,40}$/.test(status)) parts.push(`status=${status}`);
+    } catch {
+      // not JSON; ignore
+    }
+  }
+  return parts.length ? ` (${parts.join(" ")})` : "";
 }

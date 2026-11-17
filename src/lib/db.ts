@@ -7,12 +7,22 @@ function createClient(): PrismaClient {
   // Small pool: on serverless every instance has its own pool, and hosted
   // Postgres free tiers allow few connections.
   const adapter = new PrismaPg({
-    connectionString: env.DATABASE_URL,
+    connectionString: strictSsl(env.DATABASE_URL),
     max: env.DATABASE_POOL_MAX,
     connectionTimeoutMillis: 10_000,
     idleTimeoutMillis: 10_000,
   });
   return new PrismaClient({ adapter });
+}
+
+/**
+ * Hosted providers hand out `sslmode=require`, which node-postgres already
+ * treats as full certificate verification (and warns about on every cold
+ * start). Spell out `verify-full` so the behaviour stays strict when pg 9
+ * switches `require` to the weaker libpq meaning.
+ */
+function strictSsl(url: string): string {
+  return url.replace(/([?&]sslmode=)(require|prefer|verify-ca)\b/, "$1verify-full");
 }
 
 // Reuse one client across hot reloads in development and warm serverless invocations.
