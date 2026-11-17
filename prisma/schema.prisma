@@ -1,6 +1,6 @@
 // VoiceLead database schema.
 //
-// Portability rules (SQLite now, PostgreSQL later):
+// Portability rules (PostgreSQL in production and locally via embedded PGlite):
 // - No Prisma `enum` and no `Json` columns. Constrained values are plain strings
 //   validated against the allowlists in src/lib/constants.ts (Zod enforces them).
 // - Structured blobs (working hours, services, audit metadata) are JSON strings
@@ -12,7 +12,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
 }
 
 model Business {

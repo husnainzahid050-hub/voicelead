@@ -7,7 +7,11 @@ import { z } from "zod";
  */
 export const serverEnvSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
-  DATABASE_URL: z.string().min(1, "DATABASE_URL is required"),
+  DATABASE_URL: z
+    .string()
+    .regex(/^postgres(ql)?:\/\//, "DATABASE_URL must be a PostgreSQL URL (postgresql://...)"),
+  // Connections per server instance. Keep small on serverless + free hosted Postgres.
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(5),
   APP_URL: z.url("APP_URL must be a full URL, e.g. http://localhost:3000"),
   SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters"),
   IP_HASH_SECRET: z.string().min(32, "IP_HASH_SECRET must be at least 32 characters"),
@@ -32,6 +36,7 @@ export function parseServerEnv(source: NodeJS.ProcessEnv): ServerEnv {
     // Treat empty strings from .env as "unset".
     GEMINI_API_KEY: source.GEMINI_API_KEY || undefined,
     GEMINI_MODEL: source.GEMINI_MODEL || undefined,
+    DATABASE_POOL_MAX: source.DATABASE_POOL_MAX || undefined,
     AI_PROVIDER: source.AI_PROVIDER || undefined,
     SHOW_DEMO_LOGIN: source.SHOW_DEMO_LOGIN || undefined,
     DEMO_OWNER_PASSWORD: source.DEMO_OWNER_PASSWORD || undefined,

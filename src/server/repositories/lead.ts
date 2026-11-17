@@ -134,8 +134,8 @@ function buildWhere(ctx: AuthContext, filter: LeadListFilter) {
     ...(q
       ? {
           OR: [
-            { customerName: { contains: q } },
-            { serviceNeeded: { contains: q } },
+            { customerName: { contains: q, mode: "insensitive" as const } },
+            { serviceNeeded: { contains: q, mode: "insensitive" as const } },
             { referenceNumber: { contains: q.toUpperCase() } },
             ...(digits.length >= 4 ? [{ phone: { contains: digits } }] : []),
           ],

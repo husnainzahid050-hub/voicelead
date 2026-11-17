@@ -111,7 +111,7 @@ describe("reference numbers", () => {
 describe("parseServerEnv", () => {
   const valid = {
     NODE_ENV: "test",
-    DATABASE_URL: "file:./test.db",
+    DATABASE_URL: "postgresql://u:p@localhost:5432/db",
     APP_URL: "http://localhost:3000",
     SESSION_SECRET: "s".repeat(32),
     IP_HASH_SECRET: "i".repeat(32),
@@ -121,6 +121,10 @@ describe("parseServerEnv", () => {
     const env = parseServerEnv({ ...valid, GEMINI_API_KEY: "" });
     expect(env.GEMINI_API_KEY).toBeUndefined();
     expect(env.GEMINI_MODEL).toBe("gemini-2.5-flash");
+  });
+
+  it("requires a PostgreSQL database URL", () => {
+    expect(() => parseServerEnv({ ...valid, DATABASE_URL: "file:./dev.db" })).toThrow(/PostgreSQL/);
   });
 
   it("rejects short secrets without echoing their values", () => {

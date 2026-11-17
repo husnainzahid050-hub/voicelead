@@ -4,7 +4,8 @@ import { defineConfig } from "vitest/config";
 /** Test-only environment. Never the development database or real secrets. */
 const TEST_ENV = {
   NODE_ENV: "test",
-  DATABASE_URL: "file:./prisma/test.db",
+  DATABASE_URL: "postgresql://postgres:postgres@127.0.0.1:5434/postgres?sslmode=disable",
+  DATABASE_POOL_MAX: "4",
   APP_URL: "http://localhost:3000",
   SESSION_SECRET: "test-session-secret-0123456789abcdef",
   IP_HASH_SECRET: "test-ip-hash-secret-0123456789abcdef",

@@ -4,7 +4,7 @@
  */
 import "dotenv/config";
 import { hash } from "@node-rs/argon2";
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
+import { PrismaPg } from "@prisma/adapter-pg";
 import { z } from "zod";
 import { PrismaClient } from "../src/generated/prisma/client";
 import { DEFAULT_TIMEZONE, LEAD_FIELD_NAMES } from "../src/lib/constants";
@@ -27,7 +27,9 @@ if (seedEnv.NODE_ENV === "production") {
   throw new Error("Refusing to seed: NODE_ENV is production. The seed deletes all data.");
 }
 
-const db = new PrismaClient({ adapter: new PrismaBetterSqlite3({ url: seedEnv.DATABASE_URL }) });
+const db = new PrismaClient({
+  adapter: new PrismaPg({ connectionString: seedEnv.DATABASE_URL, max: 2 }),
+});
 
 const MINUTE = 60_000;
 const now = Date.now();
