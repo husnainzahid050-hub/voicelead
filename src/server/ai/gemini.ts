@@ -27,12 +27,26 @@ import {
 /** Retries cover transient 429/5xx; timeouts keep the customer from waiting forever. */
 const REQUEST = { maxRetries: 2 } as const;
 
+/**
+ * These are short extraction tasks: deep "thinking" only adds latency (newer
+ * Flash models think by default and blew through the timeouts). Gemini 2.x
+ * takes a token budget, Gemini 3+ a level.
+ */
+function minimalThinking(modelId: string) {
+  const thinkingConfig = /^gemini-2\./.test(modelId)
+    ? { thinkingBudget: 0 }
+    : { thinkingLevel: "minimal" as const };
+  return { google: { thinkingConfig } };
+}
+
 export class GeminiLeadAI implements LeadAI {
   readonly name = "gemini" as const;
   private readonly model: LanguageModel;
+  private readonly providerOptions: ReturnType<typeof minimalThinking>;
 
   constructor(apiKey: string, modelId: string) {
     this.model = createGoogleGenerativeAI({ apiKey })(modelId);
+    this.providerOptions = minimalThinking(modelId);
   }
 
   async transcribe(audio: Uint8Array, mediaType: string): Promise<AiTranscription> {
@@ -40,6 +54,7 @@ export class GeminiLeadAI implements LeadAI {
       const { output } = await generateText({
         ...REQUEST,
         model: this.model,
+        providerOptions: this.providerOptions,
         timeout: 45_000,
         temperature: 0,
         output: Output.object({ schema: aiTranscriptionSchema }),
@@ -63,6 +78,7 @@ export class GeminiLeadAI implements LeadAI {
       const { output } = await generateText({
         ...REQUEST,
         model: this.model,
+        providerOptions: this.providerOptions,
         timeout: 25_000,
         temperature: 0.1,
         output: Output.object({ schema: aiExtractionSchema }),
@@ -78,6 +94,7 @@ export class GeminiLeadAI implements LeadAI {
       const { output } = await generateText({
         maxRetries: 1,
         model: this.model,
+        providerOptions: this.providerOptions,
         timeout: 8_000,
         temperature: 0.3,
         output: Output.object({ schema: aiQuestionSchema }),
@@ -92,6 +109,7 @@ export class GeminiLeadAI implements LeadAI {
       const { output } = await generateText({
         ...REQUEST,
         model: this.model,
+        providerOptions: this.providerOptions,
         timeout: 15_000,
         temperature: 0.4,
         output: Output.object({ schema: aiFollowUpSchema }),
