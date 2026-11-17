@@ -148,10 +148,12 @@ function describeProviderError(error: unknown): string {
   if (typeof e.statusCode === "number") parts.push(`http=${e.statusCode}`);
   if (typeof e.responseBody === "string") {
     try {
-      const body = (JSON.parse(e.responseBody) as { error?: { status?: unknown; message?: unknown } })
-        .error;
+      const body = (
+        JSON.parse(e.responseBody) as { error?: { status?: unknown; message?: unknown } }
+      ).error;
       const status = body?.status;
-      if (typeof status === "string" && /^[A-Z_]{3,40}$/.test(status)) parts.push(`status=${status}`);
+      if (typeof status === "string" && /^[A-Z_]{3,40}$/.test(status))
+        parts.push(`status=${status}`);
       // 400s describe the request parameters (model, config), not the patient's words.
       if (e.statusCode === 400 && typeof body?.message === "string") {
         parts.push(`reason="${body.message.slice(0, 160).replace(/\s+/g, " ")}"`);
